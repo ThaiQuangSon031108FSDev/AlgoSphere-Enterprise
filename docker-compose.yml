@@ -1,0 +1,70 @@
+
+services:
+  # Database chính (SQL Server)
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: algosphere_sqlserver
+    ports:
+      - "1433:1433"
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=Password123!
+    networks:
+      - algosphere_network
+
+  # Caching & Leaderboard (Redis)
+  redis:
+    image: redis:7-alpine
+    container_name: algosphere_redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    networks:
+      - algosphere_network
+
+  # NoSQL cho AI Analytics & Forum (MongoDB)
+  mongodb:
+    image: mongo:latest
+    container_name: algosphere_mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=password
+    networks:
+      - algosphere_network
+
+  # Mock API Gateway (YARP hoặc Nginx - Hiện tại dùng Nginx đơn giản)
+  gateway:
+    image: nginx:alpine
+    container_name: algosphere_gateway
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - webapi
+    networks:
+      - algosphere_network
+
+  # Backend Web API (Sẽ build từ Dockerfile sau khi khởi tạo code)
+  webapi:
+    build:
+      context: .
+      dockerfile: src/AlgoSphere.Api/Dockerfile
+    container_name: algosphere_webapi
+    ports:
+      - "5000:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Server=sqlserver;Database=AlgoSphereDb;User Id=sa;Password=Password123!;TrustServerCertificate=True;
+    depends_on:
+      - sqlserver
+      - redis
+      - mongodb
+    networks:
+      - algosphere_network
+
+networks:
+  algosphere_network:
+    driver: bridge

@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AlgoSphere.Api/AlgoSphere.Api.csproj" />
+    <Project Path="src/AlgoSphere.Application/AlgoSphere.Application.csproj" />
+    <Project Path="src/AlgoSphere.Domain/AlgoSphere.Domain.csproj" />
+    <Project Path="src/AlgoSphere.Infrastructure/AlgoSphere.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AlgoSphere.UnitTests/AlgoSphere.UnitTests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,6 @@
+@AlgoSphere.Api_HostAddress = http://localhost:5068
+
+GET {{AlgoSphere.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
