@@ -1,43 +1,71 @@
 using AlgoSphere.Application.Interfaces;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 
 namespace AlgoSphere.Infrastructure.Services;
 
 public class RedisLeaderboardService : ILeaderboardService
 {
-    private readonly IDatabase _db;
+    private readonly IDatabase? _db;
+    private readonly IAlgoSphereDbContext _context;
+    private readonly ILogger<RedisLeaderboardService> _logger;
     private const string LeaderboardKey = "algosphere:leaderboard";
 
-    public RedisLeaderboardService(IConfiguration config)
+    public RedisLeaderboardService(
+        IConfiguration config,
+        IAlgoSphereDbContext context,
+        ILogger<RedisLeaderboardService> logger)
     {
-        var redis = ConnectionMultiplexer.Connect(config.GetConnectionString("Redis") ?? "localhost:6379");
-        _db = redis.GetDatabase();
+        _context = context;
+        _logger = logger;
+        try
+        {
+            var redis = ConnectionMultiplexer.Connect(
+                config.GetConnectionString("Redis") ?? "localhost:6379");
+            _db = redis.GetDatabase();
+        }
+        catch
+        {
+            _logger.LogWarning("Redis unavailable — leaderboard will query SQL Server directly.");
+            _db = null;
+        }
     }
 
     public async Task UpdateScoreAsync(string username, double score)
     {
-        await _db.SortedSetAddAsync(LeaderboardKey, username, score);
+        if (_db != null)
+            await _db.SortedSetAddAsync(LeaderboardKey, username, score);
     }
 
     public async Task<List<LeaderboardEntry>> GetTopRankingsAsync(int count)
     {
-        var results = await _db.SortedSetRangeByRankWithScoresAsync(LeaderboardKey, 0, count - 1, Order.Descending);
-        
-        var leaderboard = new List<LeaderboardEntry>();
-        for (int i = 0; i < results.Length; i++)
+        // Try Redis cache first
+        if (_db != null)
         {
-            leaderboard.Add(new LeaderboardEntry(results[i].Element!, results[i].Score, i + 1));
-        }
-        
-        // Mock data nếu Redis chưa có dữ liệu
-        if (leaderboard.Count == 0)
-        {
-            leaderboard.Add(new LeaderboardEntry("Master_Coder", 5000, 1));
-            leaderboard.Add(new LeaderboardEntry("Algo_King", 4200, 2));
-            leaderboard.Add(new LeaderboardEntry("Dev_Pro", 3800, 3));
+            try
+            {
+                var cached = await _db.SortedSetRangeByRankWithScoresAsync(
+                    LeaderboardKey, 0, count - 1, Order.Descending);
+                if (cached.Length > 0)
+                    return cached.Select((r, i) => new LeaderboardEntry(r.Element!, r.Score, i + 1)).ToList();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Redis read failed, falling back to SQL.");
+            }
         }
 
-        return leaderboard;
+        // Fallback: SQL Server (source of truth from RankPoints)
+        var users = await _context.Users
+            .AsNoTracking()
+            .Where(u => u.Status == "Active")
+            .OrderByDescending(u => u.RankPoints)
+            .Take(count)
+            .Select(u => new { u.Username, u.RankPoints })
+            .ToListAsync();
+
+        return users.Select((u, i) => new LeaderboardEntry(u.Username, u.RankPoints, i + 1)).ToList();
     }
 }

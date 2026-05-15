@@ -36,6 +36,14 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, int>
         _context.Users.Add(user);
         await _context.SaveChangesAsync(cancellationToken);
 
+        // Assign default 'Student' role
+        var studentRole = await _context.Roles.FirstOrDefaultAsync(r => r.RoleName == "Student", cancellationToken);
+        if (studentRole != null)
+        {
+            _context.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = studentRole.Id });
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
         return user.Id;
     }
 }

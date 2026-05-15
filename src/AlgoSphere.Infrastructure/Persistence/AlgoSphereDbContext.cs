@@ -23,6 +23,7 @@ public class AlgoSphereDbContext : DbContext, IAlgoSphereDbContext
     public DbSet<Comment> Comments => Set<Comment>();
 
     public DbSet<Tournament> Tournaments => Set<Tournament>();
+    public DbSet<TournamentParticipant> TournamentParticipants => Set<TournamentParticipant>();
     public DbSet<Match> Matches => Set<Match>();
     public DbSet<Organization> Organizations => Set<Organization>();
 
@@ -40,6 +41,13 @@ public class AlgoSphereDbContext : DbContext, IAlgoSphereDbContext
 
         modelBuilder.Entity<TournamentParticipant>()
             .HasKey(tp => new { tp.TournamentId, tp.UserId });
+
+        // Seed default roles
+        var seedDate = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        modelBuilder.Entity<Role>().HasData(
+            new Role { Id = 1, RoleName = "Admin", CreatedAt = seedDate },
+            new Role { Id = 2, RoleName = "Student", CreatedAt = seedDate }
+        );
 
         // Topic → Category (Restrict to avoid cascade cycle)
         modelBuilder.Entity<Topic>()

@@ -8,6 +8,7 @@ public interface IAlgoSphereDbContext
     DbSet<Category> Categories { get; }
     DbSet<Topic> Topics { get; }
     DbSet<Exercise> Exercises { get; }
+    DbSet<Submission> Submissions { get; }
     DbSet<User> Users { get; }
     DbSet<Role> Roles { get; }
     DbSet<UserRole> UserRoles { get; }
@@ -15,6 +16,7 @@ public interface IAlgoSphereDbContext
     DbSet<Discussion> Discussions { get; }
     DbSet<Comment> Comments { get; }
     DbSet<Tournament> Tournaments { get; }
+    DbSet<TournamentParticipant> TournamentParticipants { get; }
     DbSet<Match> Matches { get; }
     DbSet<Organization> Organizations { get; }
 

@@ -1,9 +1,12 @@
 using AlgoSphere.Application.Features.Forums.Commands.CreateDiscussion;
 using AlgoSphere.Application.Features.Forums.Commands.PostComment;
 using AlgoSphere.Application.Features.Forums.Queries.GetDiscussionDetails;
+using AlgoSphere.Application.Features.Forums.Queries.GetDiscussionsByForum;
 using AlgoSphere.Application.Features.Forums.Queries.GetForums;
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace AlgoSphere.Api.Controllers;
 
@@ -24,6 +27,12 @@ public class ForumsController : ControllerBase
         return await _mediator.Send(new GetForumsQuery());
     }
 
+    [HttpGet("{forumId}/discussions")]
+    public async Task<ActionResult<List<DiscussionSummaryDto>>> GetDiscussions(int forumId, [FromQuery] int page = 1)
+    {
+        return await _mediator.Send(new GetDiscussionsByForumQuery(forumId, page));
+    }
+
     [HttpGet("discussions/{id}")]
     public async Task<ActionResult<DiscussionDetailsDto>> GetDiscussion(int id)
     {
@@ -33,14 +42,27 @@ public class ForumsController : ControllerBase
     }
 
     [HttpPost("discussions")]
-    public async Task<ActionResult<int>> CreateDiscussion(CreateDiscussionCommand command)
+    [Authorize]
+    public async Task<ActionResult<int>> CreateDiscussion([FromBody] CreateDiscussionRequestDto dto)
     {
-        return await _mediator.Send(command);
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userIdClaim == null || !int.TryParse(userIdClaim, out var userId))
+            return Unauthorized();
+
+        return await _mediator.Send(new CreateDiscussionCommand(dto.ForumId, userId, dto.Title, dto.Content));
     }
 
     [HttpPost("comments")]
-    public async Task<ActionResult<int>> PostComment(PostCommentCommand command)
+    [Authorize]
+    public async Task<ActionResult<int>> PostComment([FromBody] PostCommentRequestDto dto)
     {
-        return await _mediator.Send(command);
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userIdClaim == null || !int.TryParse(userIdClaim, out var userId))
+            return Unauthorized();
+
+        return await _mediator.Send(new PostCommentCommand(dto.DiscussionId, userId, dto.Content, dto.ParentCommentId));
     }
 }
+
+public record PostCommentRequestDto(int DiscussionId, string Content, int? ParentCommentId = null);
+public record CreateDiscussionRequestDto(int ForumId, string Title, string Content);

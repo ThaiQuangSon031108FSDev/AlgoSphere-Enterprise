@@ -80,12 +80,13 @@ const accentColors = [
         <p class="text-slate-500 text-sm mb-6 leading-relaxed line-clamp-2">{{ forum.description }}</p>
 
         <!-- CTA -->
-        <button class="w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all duration-200 cursor-pointer"
+        <router-link :to="{ name: 'forum-detail', params: { id: forum.id } }"
+          class="w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all duration-200 cursor-pointer"
           style="background: rgba(255,255,255,0.04); color: #94A3B8; border: 1px solid rgba(255,255,255,0.06);"
           @mouseenter="($event.currentTarget as HTMLElement).style.background = accentColors[idx % 4].bg; ($event.currentTarget as HTMLElement).style.color = accentColors[idx % 4].icon; ($event.currentTarget as HTMLElement).style.borderColor = accentColors[idx % 4].border;"
           @mouseleave="($event.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)'; ($event.currentTarget as HTMLElement).style.color = '#94A3B8'; ($event.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.06)';">
           Xem bài viết <ChevronRight class="w-4 h-4" />
-        </button>
+        </router-link>
       </div>
     </div>
   </div>

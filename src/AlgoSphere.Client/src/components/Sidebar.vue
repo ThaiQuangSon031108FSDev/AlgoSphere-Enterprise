@@ -1,28 +1,62 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import {
   LayoutDashboard, Code2, Trophy, Swords,
-  MessageSquare, Target, BarChart3, Settings,
-  LogOut, Zap, ChevronRight
+  MessageSquare, Target, ShieldCheck, Settings,
+  LogOut, Zap, ChevronRight, GitBranch, User
 } from 'lucide-vue-next'
+import { API_BASE } from '../utils/api'
 
 const route = useRoute()
+const router = useRouter()
 const isActive = (path: string) => route.path === path || route.path.startsWith(path + '/')
 
 const navItems = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
-  { to: '/topics', label: 'Bài Tập', icon: Code2 },
+  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, exact: true },
+  { to: '/skill-tree', label: 'Skill Tree', icon: GitBranch },
+  { to: '/profile', label: 'Hồ Sơ', icon: User },
+  { to: '/topic/1', label: 'Bài Tập', icon: Code2 },
   { to: '/arena', label: 'Code Arena', icon: Swords, badge: 'LIVE' },
   { to: '/tournaments', label: 'Giải Đấu', icon: Target },
   { to: '/leaderboard', label: 'Xếp Hạng', icon: Trophy },
   { to: '/forum', label: 'Diễn Đàn', icon: MessageSquare },
-  { to: '/b2b', label: 'Quản Trị B2B', icon: BarChart3 },
+  { to: '/admin', label: 'Admin CMS', icon: ShieldCheck },
 ]
 
-const xp = ref(2450)
-const level = ref(12)
-const xpProgress = ref(72) // percent to next level
+const username = ref('Loading...')
+const avatarChar = ref('?')
+const xp = ref(0)
+const level = ref(1)
+const xpProgress = ref(0)
+const rank = ref('Bronze')
+
+onMounted(async () => {
+  const token = localStorage.getItem('token')
+  if (!token) return
+
+  try {
+    const res = await fetch(`${API_BASE}/users/me`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    if (res.ok) {
+      const data = await res.json()
+      username.value = data.username
+      avatarChar.value = data.username[0]?.toUpperCase()
+      xp.value = data.xp
+      level.value = data.level
+      rank.value = data.rank
+      xpProgress.value = data.nextLevelXp > 0 ? (data.xp / data.nextLevelXp) * 100 : 0
+    }
+  } catch (e) {
+    console.error('Failed to load user data for sidebar')
+  }
+})
+
+const handleLogout = () => {
+  localStorage.removeItem('token')
+  router.push('/login')
+}
 </script>
 
 <template>
@@ -42,17 +76,17 @@ const xpProgress = ref(72) // percent to next level
     </div>
 
     <!-- User Card -->
-    <div class="mx-3 mb-5 p-4 rounded-xl relative overflow-hidden shine cursor-pointer" style="background: rgba(16,185,129,0.06); border: 1px solid rgba(16,185,129,0.15);">
+    <div @click="router.push('/profile')" class="mx-3 mb-5 p-4 rounded-xl relative overflow-hidden shine cursor-pointer" style="background: rgba(16,185,129,0.06); border: 1px solid rgba(16,185,129,0.15);">
       <div class="flex items-center gap-3 mb-3">
         <div class="relative">
           <div class="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm" style="background: linear-gradient(135deg, #10B981 0%, #3B82F6 100%);">
-            A
+            {{ avatarChar }}
           </div>
           <div class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 border-2" style="border-color: #060D16;"></div>
         </div>
         <div class="min-w-0">
-          <div class="font-semibold text-sm text-slate-100 truncate">AlgoUser_01</div>
-          <div class="text-[10px] font-bold uppercase tracking-wider" style="color: #10B981;">LV.{{ level }} · Gold Rank</div>
+          <div class="font-semibold text-sm text-slate-100 truncate">{{ username }}</div>
+          <div class="text-[10px] font-bold uppercase tracking-wider" style="color: #10B981;">LV.{{ level }} · {{ rank }} Rank</div>
         </div>
       </div>
       <!-- XP Bar -->
@@ -105,7 +139,7 @@ const xpProgress = ref(72) // percent to next level
         class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-500 hover:text-slate-200 hover:bg-white/5 transition-all text-sm font-medium cursor-pointer">
         <Settings class="w-4 h-4" /> Cài đặt
       </router-link>
-      <button class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-sm font-medium cursor-pointer"
+      <button @click="handleLogout" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-sm font-medium cursor-pointer"
         style="color: #F87171;"
         onmouseenter="this.style.background='rgba(239,68,68,0.08)'"
         onmouseleave="this.style.background='transparent'">

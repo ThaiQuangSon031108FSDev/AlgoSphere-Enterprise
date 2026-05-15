@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { Trophy, Calendar, Users, ChevronRight } from 'lucide-vue-next'
+import { useRouter } from 'vue-router'
+import { Trophy, Calendar, Users, ChevronRight, UserPlus, Loader2 } from 'lucide-vue-next'
 import { API_BASE } from '../utils/api'
 
+const router = useRouter()
 const tournaments = ref<any[]>([])
 const loading = ref(true)
+const joiningId = ref<number | null>(null)
+const joinMessages = ref<Record<number, { msg: string; ok: boolean }>>({})
 
 onMounted(async () => {
   try {
@@ -16,6 +20,33 @@ onMounted(async () => {
     loading.value = false
   }
 })
+
+const joinTournament = async (id: number) => {
+  const token = localStorage.getItem('token')
+  if (!token) { router.push('/login'); return }
+
+  joiningId.value = id
+  joinMessages.value[id] = { msg: '', ok: false }
+
+  try {
+    const res = await fetch(`${API_BASE}/tournaments/${id}/join`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    const data = await res.json()
+    joinMessages.value[id] = { msg: data.message, ok: data.success }
+    if (data.success) {
+      // Update participant count locally
+      const t = tournaments.value.find(t => t.id === id)
+      if (t) t.participantCount++
+    }
+  } catch {
+    joinMessages.value[id] = { msg: 'Lỗi kết nối.', ok: false }
+  } finally {
+    joiningId.value = null
+  }
+}
+
 
 const statusConfig: Record<string, { label: string; color: string; bg: string; dot: string }> = {
   Active:    { label: 'LIVE', color: '#10B981', bg: 'rgba(16,185,129,0.12)', dot: '#10B981' },
@@ -87,21 +118,38 @@ const statusConfig: Record<string, { label: string; color: string; bg: string; d
           </div>
 
           <!-- Stats + CTA -->
-          <div class="flex items-center gap-8 flex-shrink-0">
-            <div class="text-center hidden sm:block">
-              <div class="flex items-center justify-center gap-1.5 text-xs text-slate-500 mb-1 uppercase tracking-wide font-bold">
-                <Users class="w-3 h-3" /> Players
+          <div class="flex flex-col items-end gap-2 flex-shrink-0">
+            <div class="flex items-center gap-5">
+              <div class="text-center hidden sm:block">
+                <div class="flex items-center justify-center gap-1.5 text-xs text-slate-500 mb-1 uppercase tracking-wide font-bold">
+                  <Users class="w-3 h-3" /> Players
+                </div>
+                <div class="font-mono-stat text-xl font-bold text-slate-200">{{ t.participantCount }}</div>
               </div>
-              <div class="font-mono-stat text-xl font-bold text-slate-200">{{ t.participantCount }}</div>
+
+              <!-- Join button (only if not Completed) -->
+              <button v-if="t.status !== 'Completed'"
+                @click.stop="joinTournament(t.id)"
+                :disabled="joiningId === t.id"
+                class="flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm transition-all"
+                style="background:rgba(59,130,246,0.1);color:#60A5FA;border:1px solid rgba(59,130,246,0.25);">
+                <Loader2 v-if="joiningId === t.id" class="w-4 h-4 animate-spin" />
+                <UserPlus v-else class="w-4 h-4" />
+                {{ joiningId === t.id ? 'Đang tham gia...' : 'Tham gia' }}
+              </button>
+
+              <router-link :to="{ name: 'brackets', params: { id: t.id } }"
+                class="flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm transition-all whitespace-nowrap"
+                style="background:rgba(16,185,129,0.1);color:#10B981;border:1px solid rgba(16,185,129,0.2);">
+                Chi tiết <ChevronRight class="w-4 h-4" />
+              </router-link>
             </div>
 
-            <router-link :to="{ name: 'brackets', params: { id: t.id } }"
-              class="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 cursor-pointer whitespace-nowrap"
-              style="background: rgba(16,185,129,0.1); color: #10B981; border: 1px solid rgba(16,185,129,0.2);"
-              @mouseenter="($event.currentTarget as HTMLElement).style.background = '#10B981'; ($event.currentTarget as HTMLElement).style.color = '#000';"
-              @mouseleave="($event.currentTarget as HTMLElement).style.background = 'rgba(16,185,129,0.1)'; ($event.currentTarget as HTMLElement).style.color = '#10B981';">
-              Chi tiết <ChevronRight class="w-4 h-4" />
-            </router-link>
+            <!-- Join feedback -->
+            <p v-if="joinMessages[t.id]?.msg" class="text-xs font-bold"
+              :style="`color:${joinMessages[t.id].ok ? '#10B981' : '#EF4444'}`">
+              {{ joinMessages[t.id].msg }}
+            </p>
           </div>
         </div>
       </div>

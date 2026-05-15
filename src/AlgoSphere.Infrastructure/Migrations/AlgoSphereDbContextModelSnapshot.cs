@@ -288,6 +288,20 @@ namespace AlgoSphere.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Roles");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            CreatedAt = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            RoleName = "Admin"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            CreatedAt = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            RoleName = "Student"
+                        });
                 });
 
             modelBuilder.Entity("AlgoSphere.Domain.Entities.Submission", b =>
@@ -424,7 +438,7 @@ namespace AlgoSphere.Infrastructure.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("TournamentParticipant");
+                    b.ToTable("TournamentParticipants");
                 });
 
             modelBuilder.Entity("AlgoSphere.Domain.Entities.User", b =>
@@ -636,7 +650,7 @@ namespace AlgoSphere.Infrastructure.Migrations
                         .IsRequired();
 
                     b.HasOne("AlgoSphere.Domain.Entities.User", "User")
-                        .WithMany()
+                        .WithMany("UserRoles")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -691,6 +705,8 @@ namespace AlgoSphere.Infrastructure.Migrations
             modelBuilder.Entity("AlgoSphere.Domain.Entities.User", b =>
                 {
                     b.Navigation("Submissions");
+
+                    b.Navigation("UserRoles");
                 });
 #pragma warning restore 612, 618
         }

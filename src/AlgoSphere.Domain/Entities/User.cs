@@ -12,4 +12,5 @@ public class User : BaseEntity
     public string Status { get; set; } = "Active";
 
     public ICollection<Submission> Submissions { get; set; } = new List<Submission>();
+    public ICollection<UserRole> UserRoles { get; set; } = new List<UserRole>();
 }

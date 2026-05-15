@@ -18,6 +18,10 @@ RUN dotnet publish src/AlgoSphere.Api/AlgoSphere.Api.csproj -c Release -o out
 # Runtime Stage
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
+
+# Install docker CLI for Sandbox execution (DockerExecutionService)
+RUN apt-get update && apt-get install -y docker.io && rm -rf /var/lib/apt/lists/*
+
 COPY --from=build /app/out .
 
 EXPOSE 80

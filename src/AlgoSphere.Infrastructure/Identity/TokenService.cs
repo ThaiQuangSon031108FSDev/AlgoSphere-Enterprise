@@ -16,9 +16,10 @@ public class TokenService : ITokenService
         _config = config;
     }
 
-    public string CreateToken(int userId, string username, string email)
+    public string CreateToken(int userId, string username, string email, IEnumerable<string> roles)
     {
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"] ?? "AlgoSphere_Enterprise_Secret_Key_2026"));
+        var key = new SymmetricSecurityKey(
+            Encoding.UTF8.GetBytes(_config["Jwt:Key"] ?? "AlgoSphere_Enterprise_Secret_Key_2026"));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256Signature);
 
         var claims = new List<Claim>
@@ -27,6 +28,10 @@ public class TokenService : ITokenService
             new Claim(JwtRegisteredClaimNames.UniqueName, username),
             new Claim(JwtRegisteredClaimNames.Email, email),
         };
+
+        // Add each role as a separate ClaimTypes.Role claim
+        foreach (var role in roles)
+            claims.Add(new Claim(ClaimTypes.Role, role));
 
         var tokenDescriptor = new SecurityTokenDescriptor
         {
@@ -39,7 +44,6 @@ public class TokenService : ITokenService
 
         var tokenHandler = new JwtSecurityTokenHandler();
         var token = tokenHandler.CreateToken(tokenDescriptor);
-
         return tokenHandler.WriteToken(token);
     }
 }

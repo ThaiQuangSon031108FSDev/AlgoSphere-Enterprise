@@ -3,7 +3,9 @@ using AlgoSphere.Application.Features.Exercises.Queries.GetExerciseById;
 using AlgoSphere.Application.Features.Exercises.Queries.GetExercisesByTopic;
 using AlgoSphere.Application.Interfaces;
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace AlgoSphere.Api.Controllers;
 
@@ -33,8 +35,16 @@ public class ExercisesController : ControllerBase
     }
 
     [HttpPost("execute")]
-    public async Task<ActionResult<ExecutionResult>> Execute(ExecuteCodeCommand command)
+    [Authorize]
+    public async Task<ActionResult<ExecutionResult>> Execute([FromBody] ExecuteCodeRequestDto dto)
     {
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userIdClaim == null || !int.TryParse(userIdClaim, out var userId))
+            return Unauthorized();
+
+        var command = new ExecuteCodeCommand(userId, dto.ExerciseId, dto.Code, dto.Language);
         return await _mediator.Send(command);
     }
 }
+
+public record ExecuteCodeRequestDto(int ExerciseId, string Code, string Language);

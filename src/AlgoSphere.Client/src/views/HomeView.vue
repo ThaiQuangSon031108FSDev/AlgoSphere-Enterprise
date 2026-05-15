@@ -1,32 +1,67 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { BookOpen, ChevronRight, Zap, Trophy, Flame, Target } from 'lucide-vue-next'
 import { API_BASE } from '../utils/api'
 
 const topics = ref<any[]>([])
+const profile = ref<any>(null)
+
+// Build stat cards from real profile data
+const stats = computed(() => [
+  {
+    label: 'Bài đã giải',
+    value: profile.value ? String(profile.value.solvedCount) : '—',
+    icon: Zap,
+    color: '#10B981',
+  },
+  {
+    label: 'Rank Points',
+    value: profile.value ? profile.value.rankPoints.toLocaleString() : '—',
+    icon: Flame,
+    color: '#F97316',
+  },
+  {
+    label: 'Hạng hiện tại',
+    value: profile.value ? profile.value.rank : '—',
+    icon: Trophy,
+    color: '#FBBF24',
+  },
+  {
+    label: 'Bài nộp',
+    value: profile.value ? String(profile.value.totalSubmissions) : '—',
+    icon: Target,
+    color: '#3B82F6',
+  },
+])
+
+const difficultyMap: Record<string, { label: string; color: string; bg: string }> = {
+  Easy:   { label: 'DỄ',  color: '#10B981', bg: 'rgba(16,185,129,0.1)' },
+  Medium: { label: 'TB',  color: '#F97316', bg: 'rgba(249,115,22,0.1)' },
+  Hard:   { label: 'KHÓ', color: '#EF4444', bg: 'rgba(239,68,68,0.1)' },
+}
 
 onMounted(async () => {
+  // Load topics (public)
   try {
     const res = await fetch(`${API_BASE}/topics`)
     topics.value = await res.json()
   } catch (err) {
     console.error(err)
   }
+
+  // Load user profile for stats (authenticated)
+  const token = localStorage.getItem('token')
+  if (token) {
+    try {
+      const res = await fetch(`${API_BASE}/users/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) profile.value = await res.json()
+    } catch { /* silent — stats show '—' */ }
+  }
 })
-
-const stats = [
-  { label: 'Bài đã giải', value: '48', icon: Zap, color: '#10B981' },
-  { label: 'Streak hiện tại', value: '7 ngày', icon: Flame, color: '#F97316' },
-  { label: 'Hạng toàn cầu', value: '#142', icon: Trophy, color: '#FBBF24' },
-  { label: 'Điểm tháng này', value: '1.250', icon: Target, color: '#3B82F6' },
-]
-
-const difficultyMap: Record<string, { label: string; color: string; bg: string }> = {
-  Easy: { label: 'DỄ', color: '#10B981', bg: 'rgba(16,185,129,0.1)' },
-  Medium: { label: 'TB', color: '#F97316', bg: 'rgba(249,115,22,0.1)' },
-  Hard: { label: 'KHÓ', color: '#EF4444', bg: 'rgba(239,68,68,0.1)' },
-}
 </script>
+
 
 <template>
   <div class="p-8 max-w-7xl mx-auto">
@@ -37,9 +72,9 @@ const difficultyMap: Record<string, { label: string; color: string; bg: string }
         <div>
           <p class="text-xs font-bold tracking-[0.25em] uppercase mb-2" style="color: #10B981;">WELCOME BACK</p>
           <h1 class="text-5xl font-bold leading-none mb-3" style="color: #F1F5F9;">
-            Chinh phục<br/>
+            Xin chào,<br/>
             <span style="background: linear-gradient(90deg, #10B981, #3B82F6); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;">
-              Thuật Toán
+              {{ profile ? profile.username : 'Coder' }}
             </span>
           </h1>
           <p class="text-slate-500 text-sm">Hôm nay bạn muốn luyện gì? Hãy chọn một topic bên dưới.</p>
@@ -51,6 +86,7 @@ const difficultyMap: Record<string, { label: string; color: string; bg: string }
         </div>
       </div>
     </header>
+
 
     <!-- Stats row -->
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10">

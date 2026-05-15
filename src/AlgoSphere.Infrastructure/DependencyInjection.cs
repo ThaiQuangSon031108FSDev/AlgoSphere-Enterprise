@@ -23,7 +23,7 @@ public static class DependencyInjection
         services.AddScoped<ITokenService, Identity.TokenService>();
         services.AddScoped<IExecutionService, Sandbox.DockerExecutionService>();
         services.AddHttpClient<IAIService, AI.GeminiAIService>();
-        services.AddSingleton<ILeaderboardService, Services.RedisLeaderboardService>();
+        services.AddScoped<ILeaderboardService, Services.RedisLeaderboardService>();
 
         return services;
     }
