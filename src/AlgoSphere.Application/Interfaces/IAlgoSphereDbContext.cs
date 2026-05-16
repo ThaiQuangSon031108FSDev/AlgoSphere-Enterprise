@@ -20,6 +20,7 @@ public interface IAlgoSphereDbContext
     DbSet<TournamentParticipant> TournamentParticipants { get; }
     DbSet<Match> Matches { get; }
     DbSet<Organization> Organizations { get; }
+    DbSet<OrganizationMember> OrganizationMembers { get; }
     DbSet<Classroom> Classrooms { get; }
     DbSet<Assignment> Assignments { get; }
 

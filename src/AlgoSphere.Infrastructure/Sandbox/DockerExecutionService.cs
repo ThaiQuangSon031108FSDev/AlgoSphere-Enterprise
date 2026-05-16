@@ -178,9 +178,9 @@ public class DockerExecutionService : IExecutionService
             return (1, "", "Execution Timeout (5s)");
         }
 
-        var fullStdout = stdoutSb.ToString();
-        var traceLog = "";
+        var fullStdout = stdoutSb.ToString().Trim();
         var success = process.ExitCode == 0;
+        var traceLog = fullStdout;
 
         var startMarker = "###ALGO_START###";
         var endMarker = "###ALGO_END###";
@@ -197,7 +197,8 @@ public class DockerExecutionService : IExecutionService
         }
         else if (!success && !string.IsNullOrEmpty(stderrSb.ToString()))
         {
-            traceLog = $"{{\"initialState\":[], \"trace\":[{{\"s\":1, \"a\":\"err\", \"t\":[], \"v\":{{\"msg\":\"{stderrSb.ToString().Replace("\"", "\\\"").Replace("\n", " ")}\"}}}}]}}";
+            // If it failed and we have stderr but no markers, create a fallback error trace
+            traceLog = $"{{\"initialState\":[], \"trace\":[{{\"s\":1, \"a\":\"err\", \"t\":[], \"v\":{{\"msg\":\"{stderrSb.ToString().Trim().Replace("\"", "\\\"").Replace("\n", " ")}\"}}}}]}}";
         }
 
         return (success ? 0 : 1, traceLog, stderrSb.ToString());

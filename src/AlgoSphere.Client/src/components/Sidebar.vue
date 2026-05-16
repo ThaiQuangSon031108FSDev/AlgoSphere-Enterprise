@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   LayoutDashboard, Code2, Trophy, Swords,
@@ -12,7 +12,9 @@ const route = useRoute()
 const router = useRouter()
 const isActive = (path: string) => route.path === path || route.path.startsWith(path + '/')
 
-const navItems = [
+const role = ref('Student')
+
+const allNavItems = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { to: '/skill-tree', label: 'Skill Tree', icon: GitBranch },
   { to: '/profile', label: 'Hồ Sơ', icon: User },
@@ -21,8 +23,15 @@ const navItems = [
   { to: '/tournaments', label: 'Giải Đấu', icon: Target },
   { to: '/leaderboard', label: 'Xếp Hạng', icon: Trophy },
   { to: '/forum', label: 'Diễn Đàn', icon: MessageSquare },
-  { to: '/admin', label: 'Admin CMS', icon: ShieldCheck },
+  { to: '/admin', label: 'Admin CMS', icon: ShieldCheck, roles: ['Admin'] },
 ]
+
+const navItems = computed(() => {
+  return allNavItems.filter(item => {
+    if (!item.roles) return true
+    return item.roles.some(r => r.toLowerCase() === role.value.toLowerCase())
+  })
+})
 
 const username = ref('Loading...')
 const avatarChar = ref('?')
@@ -41,11 +50,13 @@ onMounted(async () => {
     })
     if (res.ok) {
       const data = await res.json()
+      console.log('User Profile Data:', data) // DEBUG: Check role casing
       username.value = data.username
       avatarChar.value = data.username[0]?.toUpperCase()
       xp.value = data.xp
       level.value = data.level
       rank.value = data.rank
+      role.value = data.role || 'Student'
       xpProgress.value = data.nextLevelXp > 0 ? (data.xp / data.nextLevelXp) * 100 : 0
     }
   } catch (e) {
@@ -85,7 +96,10 @@ const handleLogout = () => {
           <div class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 border-2" style="border-color: #060D16;"></div>
         </div>
         <div class="min-w-0">
-          <div class="font-semibold text-sm text-slate-100 truncate">{{ username }}</div>
+          <div class="flex items-center gap-2">
+            <div class="font-semibold text-sm text-slate-100 truncate">{{ username }}</div>
+            <span v-if="role === 'Admin'" class="text-[9px] px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30 font-bold uppercase tracking-wider glow-red-sm">Admin</span>
+          </div>
           <div class="text-[10px] font-bold uppercase tracking-wider" style="color: #10B981;">LV.{{ level }} · {{ rank }} Rank</div>
         </div>
       </div>

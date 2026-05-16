@@ -1,5 +1,7 @@
 using AlgoSphere.Application.Interfaces;
 using AlgoSphere.Infrastructure.Persistence;
+using AlgoSphere.Infrastructure.Services;
+using AlgoSphere.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -23,8 +25,19 @@ public static class DependencyInjection
         services.AddScoped<ITokenService, Identity.TokenService>();
         services.AddScoped<IExecutionService, Sandbox.DockerExecutionService>();
         services.AddHttpClient<IAIService, AI.GeminiAIService>();
-        services.AddScoped<ILeaderboardService, Services.RedisLeaderboardService>();
+        services.AddScoped<ILeaderboardService, RedisLeaderboardService>();
+
+        // Anti-Cheat (two-layer: velocity + AST structural similarity)
+        services.AddScoped<IAntiCheatService, AntiCheatService>();
+
+        // Tournament automation (event-driven + scheduled fallback)
+        services.AddScoped<ITournamentService, TournamentService>();
+        services.AddHostedService<TournamentTimeoutWorker>();
+
+        // Object Storage (MinIO in dev, AWS S3 in prod — config-driven)
+        services.AddSingleton<IStorageService, S3StorageService>();
 
         return services;
     }
 }
+

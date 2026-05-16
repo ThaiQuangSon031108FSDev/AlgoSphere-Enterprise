@@ -9,7 +9,7 @@ namespace AlgoSphere.Application.Features.Topics.Queries.GetTopics;
 
 public record GetTopicsQuery : IRequest<List<TopicDto>>;
 
-public record TopicDto(int Id, string Name, string Description, int OrderIndex);
+public record TopicDto(int Id, string Name, string Description, int OrderIndex, int ExerciseCount, string Difficulty);
 
 public class GetTopicsQueryHandler : IRequestHandler<GetTopicsQuery, List<TopicDto>>
 {
@@ -49,7 +49,15 @@ public class GetTopicsQueryHandler : IRequestHandler<GetTopicsQuery, List<TopicD
 
         // DB fallback
         var topics = await _context.Topics
-            .Select(t => new TopicDto(t.Id, t.Name, t.Description, t.OrderIndex))
+            .Include(t => t.Exercises)
+            .Select(t => new TopicDto(
+                t.Id, 
+                t.Name, 
+                t.Description, 
+                t.OrderIndex, 
+                t.Exercises.Count,
+                t.Exercises.Any() ? t.Exercises.OrderBy(e => e.DifficultyLevel).First().DifficultyLevel : "Easy"
+            ))
             .ToListAsync(cancellationToken);
 
         // Best-effort write back to cache

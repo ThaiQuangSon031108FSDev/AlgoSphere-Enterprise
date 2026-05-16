@@ -4,6 +4,7 @@ using AlgoSphere.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AlgoSphere.Infrastructure.Migrations
 {
     [DbContext(typeof(AlgoSphereDbContext))]
-    partial class AlgoSphereDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260516134454_AddCommentMaterializedPath")]
+    partial class AddCommentMaterializedPath
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -597,12 +600,6 @@ namespace AlgoSphere.Infrastructure.Migrations
 
                     b.Property<DateTime>("EndDate")
                         .HasColumnType("datetime2");
-
-                    b.Property<int>("MaxParticipants")
-                        .HasColumnType("int");
-
-                    b.Property<int>("MinParticipants")
-                        .HasColumnType("int");
 
                     b.Property<int>("RoundDurationMinutes")
                         .HasColumnType("int");

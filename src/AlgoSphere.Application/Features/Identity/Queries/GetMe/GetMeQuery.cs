@@ -19,7 +19,8 @@ public record UserProfileDto(
     int Xp,
     int NextLevelXp,
     string Rank,
-    IReadOnlyList<string> Badges
+    IReadOnlyList<string> Badges,
+    string Role
 );
 
 public class GetMeQueryHandler : IRequestHandler<GetMeQuery, UserProfileDto>
@@ -35,8 +36,12 @@ public class GetMeQueryHandler : IRequestHandler<GetMeQuery, UserProfileDto>
     {
         var user = await _context.Users
             .AsNoTracking()
+            .Include(u => u.UserRoles)
+            .ThenInclude(ur => ur.Role)
             .FirstOrDefaultAsync(u => u.Id == request.UserId, cancellationToken)
             ?? throw new KeyNotFoundException($"User {request.UserId} not found.");
+
+        var role = user.UserRoles.FirstOrDefault()?.Role?.RoleName ?? "Student";
 
         var totalSubmissions = await _context.Submissions.CountAsync(s => s.UserId == request.UserId, cancellationToken);
         var solvedCount = await _context.Submissions
@@ -83,7 +88,8 @@ public class GetMeQueryHandler : IRequestHandler<GetMeQuery, UserProfileDto>
             Xp:               xp - levelFloor,
             NextLevelXp:      nextXp - levelFloor,
             Rank:             rank,
-            Badges:           badges.AsReadOnly()
+            Badges:           badges.AsReadOnly(),
+            Role:             role
         );
     }
 }

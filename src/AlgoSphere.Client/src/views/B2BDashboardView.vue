@@ -5,13 +5,31 @@ import { API_BASE } from '../utils/api'
 
 const analytics = ref<any>(null)
 const loading = ref(true)
+const orgId = ref<number | null>(null)
 
 onMounted(async () => {
+  const token = localStorage.getItem('token')
   try {
-    const res = await fetch(`${API_BASE}/b2b/analytics/1`)
-    analytics.value = await res.json()
+    // 1. Get User Profile to find OrgId
+    const profileRes = await fetch(`${API_BASE}/users/me`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    if (!profileRes.ok) throw new Error('Unauthorized')
+    const profile = await profileRes.json()
+    
+    // In our system, OrganizationId might be in profile.organizationId
+    // If not present, we fallback to 1 for dev/demo purposes
+    orgId.value = profile.organizationId || 1
+
+    // 2. Fetch real analytics
+    const res = await fetch(`${API_BASE}/b2b/analytics/${orgId.value}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    if (res.ok) {
+      analytics.value = await res.json()
+    }
   } catch (err) {
-    console.error(err)
+    console.error('Failed to load B2B Analytics:', err)
   } finally {
     loading.value = false
   }

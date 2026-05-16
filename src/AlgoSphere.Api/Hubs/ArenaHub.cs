@@ -1,3 +1,4 @@
+using AlgoSphere.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using StackExchange.Redis;
@@ -8,15 +9,20 @@ namespace AlgoSphere.Api.Hubs;
 /// <summary>
 /// Real matchmaking hub using Redis sorted set as a waiting queue.
 /// Flow: JoinQueue → added to Redis → background task polls → when 2 players found → MatchFound.
+/// SubmitResult now hooks into ITournamentService for automated bracket advancement.
 /// </summary>
 [Authorize]
 public class ArenaHub : Hub
 {
     private readonly IDatabase? _redis;
+    private readonly ITournamentService _tournamentService;
+    private readonly IServiceScopeFactory _scopeFactory;
     private const string QueueKey = "algosphere:arena:queue";
 
-    public ArenaHub(IConfiguration config)
+    public ArenaHub(IConfiguration config, ITournamentService tournamentService, IServiceScopeFactory scopeFactory)
     {
+        _tournamentService = tournamentService;
+        _scopeFactory = scopeFactory;
         try
         {
             var mux = ConnectionMultiplexer.Connect(config.GetConnectionString("Redis") ?? "localhost:6379");
@@ -24,7 +30,7 @@ public class ArenaHub : Hub
         }
         catch
         {
-            _redis = null; // Redis not available — fallback handled below
+            _redis = null; 
         }
     }
 
@@ -81,6 +87,16 @@ public class ArenaHub : Hub
             await _redis.SortedSetRemoveAsync(QueueKey, waiting[1].Element);
 
             var matchId = Guid.NewGuid().ToString("N")[..8].ToUpper();
+            
+            // Pick a random exercise from DB
+            int exerciseId = 1;
+            using (var scope = _scopeFactory.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<AlgoSphere.Infrastructure.Persistence.AlgoSphereDbContext>();
+                var allIds = await db.Exercises.Select(e => e.Id).ToListAsync();
+                if (allIds.Any()) exerciseId = allIds[new Random().Next(allIds.Count)];
+            }
+
             var p1ConnId = p1Parts.Length > 1 ? p1Parts[1] : "";
             var p2ConnId = p2Parts.Length > 1 ? p2Parts[1] : "";
             var p1Name   = p1Parts.Length > 2 ? p1Parts[2] : "Player 1";
@@ -95,7 +111,8 @@ public class ArenaHub : Hub
             {
                 MatchId   = matchId,
                 Opponent  = p2Name,
-                YourTeam  = "blue"
+                YourTeam  = "blue",
+                ExerciseId = exerciseId
             });
 
             // Notify Player 2
@@ -103,7 +120,8 @@ public class ArenaHub : Hub
             {
                 MatchId   = matchId,
                 Opponent  = p1Name,
-                YourTeam  = "red"
+                YourTeam  = "red",
+                ExerciseId = exerciseId
             });
         }
         else
@@ -152,14 +170,23 @@ public class ArenaHub : Hub
         await Clients.OthersInGroup(matchId).SendAsync("OpponentProgress", progressPercent);
     }
 
-    /// <summary>Report match result — award XP via HTTP call or direct DB (handled by controller).</summary>
-    public async Task SubmitResult(string matchId, bool won)
+    /// <summary>
+    /// Report match result — notify all in match group and optionally advance tournament bracket.
+    /// If the match belongs to a tournament, ITournamentService checks if the round is complete.
+    /// </summary>
+    public async Task SubmitResult(string matchId, bool won, int? tournamentId = null)
     {
         await Clients.Group(matchId).SendAsync("MatchEnded", new
         {
             MatchId = matchId,
             Winner  = won ? Context.ConnectionId : "opponent"
         });
+
+        // Event-driven tournament advancement
+        if (tournamentId.HasValue)
+        {
+            await _tournamentService.AdvanceRoundIfCompleteAsync(tournamentId.Value);
+        }
     }
 
     /// <summary>Broadcast bracket update to all tournament observers.</summary>

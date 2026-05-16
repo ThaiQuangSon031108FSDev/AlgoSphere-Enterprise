@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { API_BASE } from '../utils/api'
 import { Play, Pause, RotateCcw, ChevronLeft, ChevronRight, Save, Sparkles, Send, X, BookOpen, Eye, Zap, Cpu, Code2 } from 'lucide-vue-next'
 import * as d3 from 'd3'
@@ -116,32 +116,83 @@ const SOLUTIONS: Record<string, SolutionData> = {
   },
   'climbing stairs': {
     complexity: 'O(n)', spaceComplexity: 'O(1)',
-    code: `function climbStairs(n) {
-  if (n <= 2) return n;
-  let a = 1, b = 2;
-  for (let i = 3; i <= n; i++) {
-    [a, b] = [b, a + b];
-  }
-  return b;
-}`,
+    code: `function climbStairs(n) {\n  if (n <= 2) return n;\n  let a = 1, b = 2;\n  for (let i = 3; i <= n; i++) {\n    [a, b] = [b, a + b];\n  }\n  return b;\n}`,
     steps: [
       '1️⃣ Base case: n=1 → 1 cách, n=2 → 2 cách.',
       '2️⃣ Nhận ra: f(n) = f(n-1) + f(n-2) (giống Fibonacci).',
       '3️⃣ Dùng 2 biến a, b thay vì mảng để tiết kiệm bộ nhớ O(1).',
-      '4️⃣ Mỗi bước: a = b (bước trước), b = a + b (bước hiện tại).',
-      '5️⃣ Sau n-2 bước lặp, b chính là đáp án.',
+      '4️⃣ Mỗi bước: a = b, b = a + b.',
     ]
   },
-  'single number': {
+  'fibonacci': {
     complexity: 'O(n)', spaceComplexity: 'O(1)',
-    code: `function singleNumber(nums) {
-  return nums.reduce((xor, n) => xor ^ n, 0);
-}`,
+    code: `function fib(n) {\n  if (n <= 1) return n;\n  let prev = 0, curr = 1;\n  for (let i = 2; i <= n; i++) {\n    [prev, curr] = [curr, prev + curr];\n  }\n  return curr;\n}`,
     steps: [
-      '1️⃣ Tính chất XOR: a ^ a = 0, a ^ 0 = a.',
-      '2️⃣ Mọi số xuất hiện 2 lần sẽ triệt tiêu nhau khi XOR.',
-      '3️⃣ Chỉ còn lại số xuất hiện 1 lần.',
-      '4️⃣ Dùng reduce để XOR toàn bộ mảng trong 1 dòng.',
+      '1️⃣ Xử lý trường hợp cơ bản n=0, n=1.',
+      '2️⃣ Dùng 2 biến để lưu giá trị của F(n-1) và F(n-2).',
+      '3️⃣ Duyệt từ 2 đến n, cập nhật giá trị mới bằng tổng 2 số trước.',
+      '4️⃣ Trả về kết quả cuối cùng.',
+    ]
+  },
+  'merge sort': {
+    complexity: 'O(n log n)', spaceComplexity: 'O(n)',
+    code: `function mergeSort(arr) {\n  if (arr.length <= 1) return arr;\n  const mid = Math.floor(arr.length / 2);\n  const left = mergeSort(arr.slice(0, mid));\n  const right = mergeSort(arr.slice(mid));\n  return merge(left, right);\n}\n\nfunction merge(left, right) {\n  let result = [], i = 0, j = 0;\n  while (i < left.length && j < right.length) {\n    if (left[i] < right[j]) result.push(left[i++]);\n    else result.push(right[j++]);\n  }\n  return [...result, ...left.slice(i), ...right.slice(j)];\n}`,
+    steps: [
+      '1️⃣ Chia mảng thành 2 nửa cho đến khi mỗi mảng chỉ còn 1 phần tử.',
+      '2️⃣ Sử dụng hàm merge để gộp 2 mảng đã sắp xếp lại với nhau.',
+      '3️⃣ So sánh từng phần tử ở 2 đầu mảng để đưa vào mảng kết quả.',
+      '4️⃣ Đệ quy cho đến khi mảng được sắp xếp hoàn toàn.',
+    ]
+  },
+  'quick sort': {
+    complexity: 'O(n log n)', spaceComplexity: 'O(log n)',
+    code: `function quickSort(arr) {\n  if (arr.length <= 1) return arr;\n  const pivot = arr[arr.length - 1];\n  const left = [], right = [];\n  for (let i = 0; i < arr.length - 1; i++) {\n    if (arr[i] < pivot) left.push(arr[i]);\n    else right.push(arr[i]);\n  }\n  return [...quickSort(left), pivot, ...quickSort(right)];\n}`,
+    steps: [
+      '1️⃣ Chọn một phần tử làm Pivot (thường là phần tử cuối).',
+      '2️⃣ Phân loại: Các số nhỏ hơn Pivot vào mảng left, lớn hơn vào mảng right.',
+      '3️⃣ Đệ quy sắp xếp mảng left và mảng right.',
+      '4️⃣ Gộp kết quả: [left] + Pivot + [right].',
+    ]
+  },
+  'valid parentheses': {
+    complexity: 'O(n)', spaceComplexity: 'O(n)',
+    code: `function isValid(s) {\n  const stack = [];\n  const map = { ")": "(", "}": "{", "]": "[" };\n  for (const char of s) {\n    if (map[char]) {\n      if (stack.pop() !== map[char]) return false;\n    } else {\n      stack.push(char);\n    }\n  }\n  return stack.length === 0;\n}`,
+    steps: [
+      '1️⃣ Khởi tạo một Stack trống.',
+      '2️⃣ Duyệt từng ký tự trong chuỗi.',
+      '3️⃣ Nếu là dấu mở ngoặc → Push vào Stack.',
+      '4️⃣ Nếu là dấu đóng → Pop từ Stack và kiểm tra xem có khớp không.',
+      '5️⃣ Cuối cùng, nếu Stack trống → Chuỗi hợp lệ.',
+    ]
+  },
+  'max subarray': {
+    complexity: 'O(n)', spaceComplexity: 'O(1)',
+    code: `function maxSubArray(nums) {\n  let maxSum = nums[0], currentSum = nums[0];\n  for (let i = 1; i < nums.length; i++) {\n    currentSum = Math.max(nums[i], currentSum + nums[i]);\n    maxSum = Math.max(maxSum, currentSum);\n  }\n  return maxSum;\n}`,
+    steps: [
+      '1️⃣ Thuật toán Kadane: Duyệt mảng 1 lần.',
+      '2️⃣ Tại mỗi vị trí, quyết định: Bắt đầu mảng con mới hay cộng dồn tiếp.',
+      '3️⃣ currentSum = max(số hiện tại, tổng cũ + số hiện tại).',
+      '4️⃣ Cập nhật maxSum nếu tìm thấy tổng lớn hơn.',
+    ]
+  },
+  'reverse linked list': {
+    complexity: 'O(n)', spaceComplexity: 'O(1)',
+    code: `function reverseList(head) {\n  let prev = null, curr = head;\n  while (curr) {\n    const next = curr.next;\n    curr.next = prev;\n    prev = curr;\n    curr = next;\n  }\n  return prev;\n}`,
+    steps: [
+      '1️⃣ Dùng 3 con trỏ: prev, curr, next.',
+      '2️⃣ Lưu con trỏ next trước khi thay đổi liên kết.',
+      '3️⃣ Đảo ngược liên kết: curr.next = prev.',
+      '4️⃣ Di chuyển prev và curr tiến lên một bước.',
+    ]
+  },
+  'best time to buy stock': {
+    complexity: 'O(n)', spaceComplexity: 'O(1)',
+    code: `function maxProfit(prices) {\n  let minPrice = Infinity, maxProfit = 0;\n  for (const price of prices) {\n    minPrice = Math.min(minPrice, price);\n    maxProfit = Math.max(maxProfit, price - minPrice);\n  }\n  return maxProfit;\n}`,
+    steps: [
+      '1️⃣ Duyệt mảng giá chứng khoán.',
+      '2️⃣ Luôn cập nhật giá thấp nhất đã gặp (minPrice).',
+      '3️⃣ Tính lợi nhuận tiềm năng nếu bán ở giá hiện tại.',
+      '4️⃣ Lưu lại lợi nhuận cao nhất (maxProfit).',
     ]
   },
 }
@@ -159,6 +210,7 @@ const applySolution = () => {
 }
 
 const route = useRoute()
+const router = useRouter()
 const exercise = ref<any>(null)
 const code = ref('// Viết thuật toán Bubble Sort của bạn...\nfunction bubbleSort(arr) {\n  for (let i = 0; i < arr.length; i++) {\n    for (let j = 0; j < arr.length - i - 1; j++) {\n      if (arr[j] > arr[j + 1]) {\n        [arr[j], arr[j + 1]] = [arr[j + 1], arr[j]]\n      }\n    }\n  }\n  return arr\n}')
 const loading = ref(false)
@@ -175,6 +227,7 @@ const highlightLine = ref<number | null>(null)
 const showLevelUpModal = ref(false)
 const showSuccessOverlay = ref(false)
 const gamiData = ref<any>(null)
+const suspicionLevel = ref('None')
 
 // ── Arena / Real-time ──────────────────────────────────────────────
 const isArenaMatch = computed(() => !!route.query.matchId)
@@ -404,6 +457,7 @@ const handleRunCode = async () => {
     const responseData = await res.json()
     const result = responseData.execution
     gamiData.value = responseData.gamification
+    suspicionLevel.value = responseData.suspicionLevel || 'None'
 
     const log: TraceLog = JSON.parse(result.traceLog)
     lastTraceLog.value = log  // Store full log for AI context
@@ -462,6 +516,8 @@ const handleRunCode = async () => {
       // Broadcast progress if in Arena
       if (isArenaMatch.value && arenaConnection) {
         await arenaConnection.invoke('SendProgress', route.query.matchId, 100)
+        // CRITICAL: Officially submit result to end match for everyone
+        await arenaConnection.invoke('SubmitResult', route.query.matchId, true)
       }
 
       if (gamiData.value.isLevelUp) {
@@ -673,9 +729,10 @@ onBeforeUnmount(() => {
     <header class="h-13 flex items-center justify-between px-4 flex-shrink-0"
       style="background:#060D16; border-bottom:1px solid rgba(16,185,129,0.12);">
       <div class="flex items-center gap-3">
-        <router-link to="/" class="p-1.5 rounded-lg text-slate-500 hover:text-emerald-400 hover:bg-white/5 transition-all">
+        <button @click="exercise?.topicId ? router.push('/topic/' + exercise.topicId) : router.back()" 
+          class="p-1.5 rounded-lg text-slate-500 hover:text-emerald-400 hover:bg-white/5 transition-all">
           <ChevronLeft class="w-5 h-5" />
-        </router-link>
+        </button>
         <div class="w-px h-4" style="background:rgba(255,255,255,0.08)"></div>
         <h1 class="font-bold text-slate-100 text-sm">{{ exercise?.title || 'Workspace' }}</h1>
         <span v-if="exercise?.difficultyLevel"
@@ -751,6 +808,14 @@ onBeforeUnmount(() => {
                 </span>
                 <span v-if="currentStep.l" class="text-[11px] text-slate-500 font-mono-stat">LINE {{ currentStep.l }}</span>
               </template>
+
+              <!-- Anti-Cheat Status Badge -->
+              <div v-if="suspicionLevel !== 'None'" 
+                class="flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-tighter shadow-lg"
+                :class="suspicionLevel === 'Low' ? 'bg-yellow-500/20 text-yellow-500 border border-yellow-500/30' : 'bg-red-500/20 text-red-500 border border-red-500/40 animate-pulse'">
+                <ShieldAlert class="w-3 h-3" />
+                {{ suspicionLevel }} SUSPICION
+              </div>
             </div>
 
             <!-- Memory Map (Secondary Structures) -->

@@ -147,12 +147,20 @@ const getJwtRoles = (): string[] => {
   try {
     const token = localStorage.getItem('token')
     if (!token) return []
-    const payload = JSON.parse(atob(token.split('.')[1]))
-    // ClaimTypes.Role maps to 'http://schemas.microsoft.com/ws/2008/06/identity/claims/role'
-    const roleClaim = payload['http://schemas.microsoft.com/ws/2008/06/identity/claims/role']
+    const parts = token.split('.')
+    if (parts.length < 2) return []
+    const payload = JSON.parse(atob(parts[1]))
+    console.log('[Router Debug] Token Payload:', payload)
+    
+    // Check both standard URI and short name
+    const roleClaim = payload['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] || payload['role']
     if (!roleClaim) return []
-    return Array.isArray(roleClaim) ? roleClaim : [roleClaim]
-  } catch {
+    const roles = Array.isArray(roleClaim) ? roleClaim : [roleClaim]
+    const normalized = roles.map((r: string) => r.toLowerCase())
+    console.log('[Router Debug] Extracted Roles:', normalized)
+    return normalized
+  } catch (e) {
+    console.error('[Router Debug] Error parsing token:', e)
     return []
   }
 }
@@ -174,8 +182,11 @@ router.beforeEach((to, _from, next) => {
   // Admin-only routes: check role
   if (to.meta?.requiresAdmin) {
     const roles = getJwtRoles()
-    if (!roles.includes('Admin')) {
-      next('/dashboard') // silently kick to dashboard
+    const isAdmin = roles.includes('admin')
+    console.log('[Router Debug] Admin check for', to.path, ':', isAdmin)
+    if (!isAdmin) {
+      console.warn('[Router Debug] Access denied. Kicking to /dashboard')
+      next('/dashboard')
       return
     }
   }

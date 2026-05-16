@@ -14,11 +14,16 @@ public class ExecuteCodeConcurrencyTests
 {
     private readonly Mock<IExecutionService> _executionServiceMock;
     private readonly Mock<IAlgoSphereDbContext> _contextMock;
+    private readonly Mock<IAntiCheatService> _antiCheatMock;
 
     public ExecuteCodeConcurrencyTests()
     {
         _executionServiceMock = new Mock<IExecutionService>();
         _contextMock = new Mock<IAlgoSphereDbContext>();
+        _antiCheatMock = new Mock<IAntiCheatService>();
+        _antiCheatMock
+            .Setup(x => x.AnalyzeAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<object>?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AntiCheatResult(SuspicionLevel.None, "No anomalies detected.", 0, 0, -1));
     }
 
     [Fact]
@@ -69,8 +74,8 @@ public class ExecuteCodeConcurrencyTests
                 return null!; 
             });
 
-        var handler = new ExecuteCodeCommandHandler(_executionServiceMock.Object, _contextMock.Object);
-        var command = new ExecuteCodeCommand(userId, exerciseId, "code", "js");
+        var handler = new ExecuteCodeCommandHandler(_executionServiceMock.Object, _contextMock.Object, _antiCheatMock.Object);
+        var command = new ExecuteCodeCommand(userId, exerciseId, "code", "js", null);
 
         // Act 
         // Note: This will likely fail on ReloadAsync if we return null!, but we want to see it try SaveChanges twice

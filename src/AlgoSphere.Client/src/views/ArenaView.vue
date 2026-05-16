@@ -12,11 +12,14 @@ const state = ref<ArenaState>('idle')
 const statusMsg = ref('')
 const opponent = ref('')
 const matchId = ref('')
+const matchExerciseId = ref(1)
 const myTeam = ref<'blue' | 'red'>('blue')
 const isPractice = ref(false)
 const userProfile = ref<{ username: string; rankPoints: number; rank: string } | null>(null)
 const elapsedSeconds = ref(0)
+const countdown = ref(5)
 let elapsedTimer: ReturnType<typeof setInterval> | null = null
+let countdownTimer: ReturnType<typeof setInterval> | null = null
 
 let connection: signalR.HubConnection | null = null
 
@@ -38,6 +41,7 @@ const startMatchmaking = async () => {
   state.value = 'searching'
   statusMsg.value = 'Đang kết nối...'
   elapsedSeconds.value = 0
+  countdown.value = 5
 
   connection = new signalR.HubConnectionBuilder()
     .withUrl(`${HUB_BASE}/ws/arena`, {
@@ -54,9 +58,19 @@ const startMatchmaking = async () => {
     clearInterval(elapsedTimer!)
     opponent.value = data.opponent
     matchId.value = data.matchId
+    matchExerciseId.value = data.exerciseId || 1
     myTeam.value = data.yourTeam ?? 'blue'
     isPractice.value = data.isPractice ?? false
     state.value = data.isPractice ? 'practice' : 'matched'
+    
+    // Start countdown for drama
+    countdownTimer = setInterval(() => {
+      countdown.value--
+      if (countdown.value <= 0) {
+        clearInterval(countdownTimer!)
+        enterMatch()
+      }
+    }, 1000)
   })
 
   try {
@@ -73,6 +87,7 @@ const startMatchmaking = async () => {
 
 const cancelSearch = async () => {
   clearInterval(elapsedTimer!)
+  clearInterval(countdownTimer!)
   if (connection) {
     try { await connection.invoke('LeaveQueue') } catch { /* ignore */ }
     await connection.stop()
@@ -83,8 +98,7 @@ const cancelSearch = async () => {
 }
 
 const enterMatch = () => {
-  // Navigate to workspace with a specific match exercise (can be parameterized later)
-  router.push({ name: 'workspace', params: { id: 1 }, query: { matchId: matchId.value, team: myTeam.value } })
+  router.push({ name: 'workspace', params: { id: matchExerciseId.value }, query: { matchId: matchId.value, team: myTeam.value } })
 }
 
 const formatElapsed = (s: number) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`
@@ -180,11 +194,15 @@ const rankColors: Record<string, string> = { Bronze: '#CD7F32', Silver: '#C0C0C0
               <div class="text-xs mt-1 text-slate-600">ĐỐI THỦ</div>
             </div>
           </div>
-          <button @click="enterMatch"
-            class="px-12 py-4 rounded-2xl font-black text-lg transition-all active:scale-95"
-            style="background:linear-gradient(135deg,#3B82F6,#8B5CF6);color:#fff;box-shadow:0 0 40px rgba(59,130,246,0.3);">
-            VÀO ĐẤU TRƯỜNG NGAY →
-          </button>
+          <div class="flex flex-col items-center gap-4">
+            <div class="text-sm font-bold text-slate-500 animate-pulse">Tự động bắt đầu sau...</div>
+            <div class="text-6xl font-black text-white drop-shadow-[0_0_20px_rgba(59,130,246,0.5)]">{{ countdown }}</div>
+            <button @click="enterMatch"
+              class="px-12 py-4 rounded-2xl font-black text-lg transition-all active:scale-95"
+              style="background:linear-gradient(135deg,#3B82F6,#8B5CF6);color:#fff;box-shadow:0 0 40px rgba(59,130,246,0.3);">
+              VÀO ĐẤU TRƯỜNG NGAY →
+            </button>
+          </div>
         </div>
       </div>
 

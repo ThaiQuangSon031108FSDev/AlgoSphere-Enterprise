@@ -31,10 +31,12 @@ public class Submission : BaseEntity
     public string SourceCode { get; set; } = string.Empty;
     public string Language { get; set; } = string.Empty;
     public string Status { get; set; } = "Pending";
-    
+
     public int ExecutionTimeMs { get; set; }
     public int MemoryUsedKb { get; set; }
-    public bool IsSuspicious { get; set; }
+
+    /// <summary>None | Low | High | Confirmed — set by AntiCheatService.</summary>
+    public string SuspicionLevel { get; set; } = "None";
 
     public SubmissionCodeDelta? CodeDelta { get; set; }
 }

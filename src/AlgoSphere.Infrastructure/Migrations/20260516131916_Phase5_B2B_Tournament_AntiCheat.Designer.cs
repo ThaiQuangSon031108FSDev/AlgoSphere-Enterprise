@@ -4,6 +4,7 @@ using AlgoSphere.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AlgoSphere.Infrastructure.Migrations
 {
     [DbContext(typeof(AlgoSphereDbContext))]
-    partial class AlgoSphereDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260516131916_Phase5_B2B_Tournament_AntiCheat")]
+    partial class Phase5_B2B_Tournament_AntiCheat
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -136,14 +139,7 @@ namespace AlgoSphere.Infrastructure.Migrations
                     b.Property<int>("DiscussionId")
                         .HasColumnType("int");
 
-                    b.Property<string>("MaterializedPath")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<int?>("ParentCommentId")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("ParentCommentId1")
                         .HasColumnType("int");
 
                     b.Property<DateTime?>("UpdatedAt")
@@ -157,8 +153,6 @@ namespace AlgoSphere.Infrastructure.Migrations
                     b.HasIndex("DiscussionId");
 
                     b.HasIndex("ParentCommentId");
-
-                    b.HasIndex("ParentCommentId1");
 
                     b.HasIndex("UserId");
 
@@ -598,12 +592,6 @@ namespace AlgoSphere.Infrastructure.Migrations
                     b.Property<DateTime>("EndDate")
                         .HasColumnType("datetime2");
 
-                    b.Property<int>("MaxParticipants")
-                        .HasColumnType("int");
-
-                    b.Property<int>("MinParticipants")
-                        .HasColumnType("int");
-
                     b.Property<int>("RoundDurationMinutes")
                         .HasColumnType("int");
 
@@ -778,10 +766,6 @@ namespace AlgoSphere.Infrastructure.Migrations
                         .HasForeignKey("ParentCommentId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("AlgoSphere.Domain.Entities.Comment", "ParentComment")
-                        .WithMany("Replies")
-                        .HasForeignKey("ParentCommentId1");
-
                     b.HasOne("AlgoSphere.Domain.Entities.User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
@@ -789,8 +773,6 @@ namespace AlgoSphere.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Discussion");
-
-                    b.Navigation("ParentComment");
 
                     b.Navigation("User");
                 });
@@ -980,11 +962,6 @@ namespace AlgoSphere.Infrastructure.Migrations
             modelBuilder.Entity("AlgoSphere.Domain.Entities.Classroom", b =>
                 {
                     b.Navigation("Assignments");
-                });
-
-            modelBuilder.Entity("AlgoSphere.Domain.Entities.Comment", b =>
-                {
-                    b.Navigation("Replies");
                 });
 
             modelBuilder.Entity("AlgoSphere.Domain.Entities.Discussion", b =>

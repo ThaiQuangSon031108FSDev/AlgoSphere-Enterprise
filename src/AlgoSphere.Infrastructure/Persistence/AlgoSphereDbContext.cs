@@ -25,6 +25,7 @@ public class AlgoSphereDbContext : DbContext, IAlgoSphereDbContext
     public DbSet<Comment> Comments => Set<Comment>();
 
     public DbSet<Organization> Organizations => Set<Organization>();
+    public DbSet<OrganizationMember> OrganizationMembers => Set<OrganizationMember>();
     public DbSet<Classroom> Classrooms => Set<Classroom>();
     public DbSet<Assignment> Assignments => Set<Assignment>();
 
@@ -47,11 +48,13 @@ public class AlgoSphereDbContext : DbContext, IAlgoSphereDbContext
         modelBuilder.Entity<TournamentParticipant>()
             .HasKey(tp => new { tp.TournamentId, tp.UserId });
 
-        // Seed default roles
+        // Seed default roles (system + org roles)
         var seedDate = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         modelBuilder.Entity<Role>().HasData(
-            new Role { Id = 1, RoleName = "Admin", CreatedAt = seedDate },
-            new Role { Id = 2, RoleName = "Student", CreatedAt = seedDate }
+            new Role { Id = 1, RoleName = "Admin",      CreatedAt = seedDate },
+            new Role { Id = 2, RoleName = "Student",    CreatedAt = seedDate },
+            new Role { Id = 3, RoleName = "Teacher",    CreatedAt = seedDate },
+            new Role { Id = 4, RoleName = "OrgAuditor", CreatedAt = seedDate }
         );
 
         // Topic → Category (Restrict to avoid cascade cycle)
@@ -125,6 +128,22 @@ public class AlgoSphereDbContext : DbContext, IAlgoSphereDbContext
             .OnDelete(DeleteBehavior.Cascade);
 
         // Classroom -> Students (Many-to-Many)
+        // OrganizationMember (composite PK: OrgId + UserId)
+        modelBuilder.Entity<OrganizationMember>()
+            .HasKey(om => new { om.OrganizationId, om.UserId });
+
+        modelBuilder.Entity<OrganizationMember>()
+            .HasOne(om => om.Organization)
+            .WithMany(o => o.OrganizationMembers)
+            .HasForeignKey(om => om.OrganizationId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<OrganizationMember>()
+            .HasOne(om => om.User)
+            .WithMany()
+            .HasForeignKey(om => om.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         modelBuilder.Entity<Classroom>()
             .HasMany(c => c.Students)
             .WithMany()

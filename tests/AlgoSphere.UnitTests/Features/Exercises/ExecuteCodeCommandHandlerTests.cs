@@ -11,12 +11,17 @@ namespace AlgoSphere.UnitTests.Features.Exercises;
 public class ExecuteCodeCommandHandlerTests
 {
     private readonly Mock<IExecutionService> _executionServiceMock;
+    private readonly Mock<IAntiCheatService> _antiCheatMock;
     private readonly IAlgoSphereDbContext _context;
 
     public ExecuteCodeCommandHandlerTests()
     {
         _executionServiceMock = new Mock<IExecutionService>();
-        
+        _antiCheatMock = new Mock<IAntiCheatService>();
+        _antiCheatMock
+            .Setup(x => x.AnalyzeAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<object>?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AntiCheatResult(SuspicionLevel.None, "No anomalies detected.", 0, 0, -1));
+
         // Use InMemory Database for Unit Testing the Handler Logic
         var options = new DbContextOptionsBuilder<AlgoSphere.Infrastructure.Persistence.AlgoSphereDbContext>()
             .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
@@ -57,8 +62,8 @@ public class ExecuteCodeCommandHandlerTests
             .ReturnsAsync(executionResult);
 
 
-        var handler = new ExecuteCodeCommandHandler(_executionServiceMock.Object, _context);
-        var command = new ExecuteCodeCommand(userId, exerciseId, "print(1)", "python");
+        var handler = new ExecuteCodeCommandHandler(_executionServiceMock.Object, _context, _antiCheatMock.Object);
+        var command = new ExecuteCodeCommand(userId, exerciseId, "print(1)", "python", null);
 
         // Act
         var result = await handler.Handle(command, CancellationToken.None);

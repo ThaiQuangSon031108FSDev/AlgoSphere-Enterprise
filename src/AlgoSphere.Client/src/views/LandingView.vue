@@ -87,6 +87,8 @@ const resetDemo = () => {
 }
 
 onMounted(() => {
+  isLoggedIn.value = !!localStorage.getItem('token')
+
   // Animate counters
   stats.value.forEach((s, i) => {
     const duration = 1800
@@ -127,17 +129,28 @@ onBeforeUnmount(() => {
           class="text-sm text-slate-400 hover:text-slate-200 transition-colors hidden md:block px-4 py-2">
           Xếp hạng
         </router-link>
-        <router-link to="/login"
-          class="text-sm text-slate-400 hover:text-slate-200 transition-colors px-4 py-2">
-          Đăng nhập
-        </router-link>
-        <router-link to="/login"
-          class="text-sm font-bold px-4 py-2 rounded-lg transition-all"
-          style="background:#10B981; color:#fff;"
-          @mouseenter="($event.target as HTMLElement).style.background='#059669'"
-          @mouseleave="($event.target as HTMLElement).style.background='#10B981'">
-          Bắt đầu miễn phí
-        </router-link>
+        <template v-if="!isLoggedIn">
+          <router-link to="/login"
+            class="text-sm text-slate-400 hover:text-slate-200 transition-colors px-4 py-2">
+            Đăng nhập
+          </router-link>
+          <router-link to="/login"
+            class="text-sm font-bold px-4 py-2 rounded-lg transition-all"
+            style="background:#10B981; color:#fff;"
+            @mouseenter="($event.target as HTMLElement).style.background='#059669'"
+            @mouseleave="($event.target as HTMLElement).style.background='#10B981'">
+            Bắt đầu miễn phí
+          </router-link>
+        </template>
+        <template v-else>
+          <router-link to="/dashboard"
+            class="text-sm font-bold px-4 py-2 rounded-lg transition-all flex items-center gap-2"
+            style="background:rgba(16,185,129,0.15); color:#10B981; border:1px solid rgba(16,185,129,0.3);"
+            @mouseenter="($event.target as HTMLElement).style.background='rgba(16,185,129,0.25)'"
+            @mouseleave="($event.target as HTMLElement).style.background='rgba(16,185,129,0.15)'">
+            Vào Dashboard <ArrowRight class="w-4 h-4" />
+          </router-link>
+        </template>
       </div>
     </nav>
 
@@ -172,12 +185,12 @@ onBeforeUnmount(() => {
         </p>
 
         <div class="flex items-center justify-center gap-4 flex-wrap">
-          <button @click="router.push('/login')"
+          <button @click="router.push(isLoggedIn ? '/dashboard' : '/login')"
             class="flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-base transition-all"
             style="background:linear-gradient(135deg,#10B981,#059669);color:#fff;box-shadow:0 0 30px rgba(16,185,129,0.3);"
             @mouseenter="($event.target as HTMLElement).style.transform='translateY(-2px)'"
             @mouseleave="($event.target as HTMLElement).style.transform='translateY(0)'">
-            Học miễn phí ngay <ArrowRight class="w-4 h-4" />
+            {{ isLoggedIn ? 'Tiếp tục luyện tập' : 'Học miễn phí ngay' }} <ArrowRight class="w-4 h-4" />
           </button>
           <router-link to="/leaderboard"
             class="flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-base transition-all text-slate-300"

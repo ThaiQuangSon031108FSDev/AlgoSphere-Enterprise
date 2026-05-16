@@ -1,4 +1,6 @@
 using AlgoSphere.Application;
+using AlgoSphere.Application.Interfaces;
+using AlgoSphere.Api.Hubs;
 using AlgoSphere.Infrastructure;
 
 using Scalar.AspNetCore;
@@ -13,6 +15,9 @@ builder.Services.AddSignalR();
 // Clean Architecture DI
 builder.Services.AddApplicationServices();
 builder.Services.AddInfrastructureServices(builder.Configuration);
+
+// Register SignalR-based tournament notifier (in Api so it can resolve IHubContext<ArenaHub>)
+builder.Services.AddScoped<ITournamentNotifier, ArenaHubTournamentNotifier>();
 
 // Cấu hình Authentication
 var key = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"] ?? "AlgoSphere_Enterprise_Secret_Key_2026"));

@@ -1,195 +1,348 @@
 using AlgoSphere.Domain.Entities;
 using AlgoSphere.Infrastructure.Persistence;
+using Bogus;
 using Microsoft.EntityFrameworkCore;
+using System.Diagnostics;
 
 namespace AlgoSphere.Infrastructure.Persistence;
 
+/// <summary>
+/// Senior Backend Architect's Database Initializer.
+/// Optimized for massive data seeding using Bogus, Chunking, and EF Core Performance Tuning.
+/// </summary>
 public static class DbInitializer
 {
+    private const int CHUNK_SIZE = 2000;
+    private static readonly string[] Statuses = { "Accepted", "Wrong Answer", "Time Limit Exceeded", "Memory Limit Exceeded", "Runtime Error" };
+    
+    private static readonly string[] CodeSnippets = {
+        "// Optimized C# Solution\npublic int Solve(int[] nums) {\n    var map = new Dictionary<int, int>();\n    for(int i=0; i<nums.Length; i++) {\n        if(map.ContainsKey(nums[i])) return i;\n        map[nums[i]] = i;\n    }\n    return -1;\n}",
+        "// Time Limit Exceeded (Nested Loops)\nfunction solve(n) {\n    let count = 0;\n    for(let i=0; i<n; i++) {\n        for(let j=0; j<n; j++) {\n            for(let k=0; k<n; k++) count++;\n        }\n    }\n    return count;\n}",
+        "// Wrong Answer (Logic error)\ndef solve(a, b):\n    return a - b # Should be a + b",
+        "// Memory Limit Exceeded\nimport numpy as np\ndef leak():\n    data = []\n    while True:\n        data.append(np.zeros((1024, 1024)))\n",
+        "// Accepted Python\ndef fib(n):\n    if n <= 1: return n\n    a, b = 0, 1\n    for _ in range(n-1):\n        a, b = b, a + b\n    return b"
+    };
+
     public static async Task InitializeAsync(AlgoSphereDbContext context)
     {
+        var timer = Stopwatch.StartNew();
+        Console.WriteLine("🚀 [DbInitializer] Starting massive seeding process...");
+
+        // Ensure database is clean or created
         await context.Database.EnsureCreatedAsync();
 
-        if (await context.Categories.AnyAsync()) return;
+        if (await context.Users.AnyAsync(u => u.Username == "admin")) 
+        {
+            Console.WriteLine("✅ Data already exists. Skipping seed.");
+            return;
+        }
 
-        // Seed roles
-        var adminRole = new Role { RoleName = "Admin" };
-        var teacherRole = new Role { RoleName = "Teacher" };
-        var studentRole = new Role { RoleName = "Student" };
-        context.Roles.AddRange(adminRole, teacherRole, studentRole);
+        // --- OPTIMIZATION: Performance Tuning ---
+        context.ChangeTracker.AutoDetectChangesEnabled = false;
+        var faker = new Faker("vi");
+
+        // 1. Roles (Static & Few)
+        var roles = new List<Role>
+        {
+            new Role { RoleName = "Admin" },
+            new Role { RoleName = "Teacher" },
+            new Role { RoleName = "OrgAuditor" },
+            new Role { RoleName = "Student" }
+        };
+        context.Roles.AddRange(roles);
         await context.SaveChangesAsync();
 
-        // Seed users with BCrypt
-        var adminUser = new User
-        {
-            Username = "admin",
-            Email = "admin@test.com",
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword("123456"),
-            Status = "Active",
-            RankPoints = 1000
-        };
-
-        var studentUser = new User
-        {
-            Username = "student",
-            Email = "student@test.com",
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword("123456"),
-            Status = "Active",
-            RankPoints = 0
-        };
-
-        context.Users.AddRange(adminUser, studentUser);
+        // 2. Organizations (20)
+        var orgFaker = new Faker<Organization>("vi")
+            .RuleFor(o => o.Name, f => f.Company.CompanyName() + " " + f.PickRandom("University", "Institute", "Academy", "Tech"))
+            .RuleFor(o => o.Domain, f => f.Internet.DomainName())
+            .RuleFor(o => o.Type, f => f.PickRandom("School", "Enterprise"));
+        
+        var organizations = orgFaker.Generate(20);
+        context.Organizations.AddRange(organizations);
         await context.SaveChangesAsync();
+        var orgIds = organizations.Select(o => o.Id).ToList();
 
-        // Assign roles
-        context.UserRoles.Add(new UserRole { User = adminUser, Role = adminRole });
-        context.UserRoles.Add(new UserRole { User = studentUser, Role = studentRole });
-        await context.SaveChangesAsync();
+        // 3. Users (5000 Students, 100 Teachers, 5 Admins)
+        var passwordHash = BCrypt.Net.BCrypt.HashPassword("123456");
+        var userFaker = new Faker<User>("vi")
+            .RuleFor(u => u.Username, f => f.Internet.UserName().ToLower() + f.UniqueIndex)
+            .RuleFor(u => u.Email, (f, u) => f.Internet.Email(u.Username))
+            .RuleFor(u => u.PasswordHash, _ => passwordHash)
+            .RuleFor(u => u.RankPoints, f => f.Random.Int(0, 5000))
+            .RuleFor(u => u.Status, _ => "Active");
 
-        var sortingCategory = new Category { Name = "Sorting Algorithms" };
-        var graphCategory = new Category { Name = "Graph Theory" };
-
-        var bubbleSortTopic = new Topic
-        {
-            Name = "Bubble Sort",
-            Description = "Thuật toán sắp xếp nổi bọt cơ bản nhưng quan trọng.",
-            OrderIndex = 1,
-            Category = sortingCategory
-        };
-
-        var quickSortTopic = new Topic
-        {
-            Name = "Quick Sort",
-            Description = "Thuật toán sắp xếp nhanh sử dụng chiến lược chia để trị.",
-            OrderIndex = 2,
-            Category = sortingCategory
-        };
-
-        var bfsTopic = new Topic
-        {
-            Name = "Breadth-First Search",
-            Description = "Duyệt đồ thị theo chiều rộng.",
-            OrderIndex = 1,
-            Category = graphCategory
-        };
-
-        var dijkstraTopic = new Topic
-        {
-            Name = "Dijkstra's Algorithm",
-            Description = "Thuật toán tìm đường đi ngắn nhất trên đồ thị có trọng số.",
-            OrderIndex = 2,
-            Category = graphCategory
-        };
-
-        var bubbleSortExercise = new Exercise
-        {
-            Title = "Bubble Sort Implementation",
-            Content = "Hãy viết thuật toán Bubble Sort để sắp xếp mảng số nguyên theo thứ tự tăng dần.",
-            DifficultyLevel = "Easy",
-            TimeLimitMs = 1000,
-            MemoryLimitKb = 64000,
-            Points = 100,
-            EntryPoint = "bubbleSort",
-            Topic = bubbleSortTopic,
-            TestCases = new List<TestCase>
-            {
-                new TestCase { InputJson = "[[64, 34, 25, 12, 22, 11, 90]]", ExpectedOutputJson = "[]", IsHidden = false }
+        Console.WriteLine("👥 Generating users...");
+        var adminList = new List<User> {
+            new User { 
+                Username = "admin", 
+                Email = "admin@algosphere.com", 
+                PasswordHash = passwordHash, 
+                RankPoints = 9999, 
+                Status = "Active" 
             }
         };
+        adminList.AddRange(userFaker.Generate(4)); // 4 more random admins
 
-        var quickSortExercise = new Exercise
-        {
-            Title = "Quick Sort Analysis",
-            Content = "Triển khai Quick Sort sử dụng phân hoạch Lomuto.",
-            DifficultyLevel = "Medium",
-            Points = 200,
-            EntryPoint = "quickSort",
-            Topic = quickSortTopic,
-            TestCases = new List<TestCase>
-            {
-                new TestCase { InputJson = "[[64, 34, 25, 12, 22, 11, 90]]", ExpectedOutputJson = "[]", IsHidden = false }
+        var teacherList = new List<User> {
+            new User { 
+                Username = "teacher", 
+                Email = "teacher@fpt.edu.vn", 
+                PasswordHash = passwordHash, 
+                RankPoints = 2000, 
+                Status = "Active" 
             }
         };
+        teacherList.AddRange(userFaker.Generate(99));
 
-        var bfsExercise = new Exercise
-        {
-            Title = "Breadth-First Search",
-            Content = "Duyệt đồ thị theo chiều rộng từ một đỉnh cho trước.",
-            DifficultyLevel = "Medium",
-            Points = 150,
-            Topic = bfsTopic
+        var studentList = new List<User> {
+            new User { 
+                Username = "student", 
+                Email = "student@test.com", 
+                PasswordHash = passwordHash, 
+                RankPoints = 500, 
+                Status = "Active" 
+            }
         };
+        studentList.AddRange(userFaker.Generate(4999));
 
-        var dijkstraExercise = new Exercise
-        {
-            Title = "Dijkstra's Algorithm",
-            Content = "Tìm đường đi ngắn nhất giữa các đỉnh trong đồ thị có trọng số không âm.",
-            DifficultyLevel = "Hard",
-            Points = 300,
-            Topic = dijkstraTopic
-        };
+        var allUsers = adminList.Concat(teacherList).Concat(studentList).ToList();
+        await SaveInChunks(context, adminList);
+        await SaveInChunks(context, teacherList);
+        await SaveInChunks(context, studentList);
 
-        // --- Bổ sung các bài tập kinh điển (LeetCode-style) ---
-        var twoSumTopic = new Topic { Name = "Two Sum", Description = "Tìm cặp số có tổng bằng target.", OrderIndex = 1, Category = sortingCategory };
-        var containsDuplicateTopic = new Topic { Name = "Contains Duplicate", Description = "Kiểm tra mảng có phần tử trùng lặp.", OrderIndex = 2, Category = sortingCategory };
-        var validPalindromeTopic = new Topic { Name = "Valid Palindrome", Description = "Kiểm tra chuỗi đối xứng.", OrderIndex = 3, Category = sortingCategory };
-        var binarySearchTopic = new Topic { Name = "Binary Search", Description = "Tìm kiếm nhị phân trên mảng đã sắp xếp.", OrderIndex = 4, Category = sortingCategory };
-        var singleNumberTopic = new Topic { Name = "Single Number", Description = "Tìm số duy nhất không bị lặp lại.", OrderIndex = 5, Category = sortingCategory };
-        var climbStairsTopic = new Topic { Name = "Climbing Stairs", Description = "Quy hoạch động cơ bản.", OrderIndex = 6, Category = sortingCategory };
-        var reverseListTopic = new Topic { Name = "Reverse Linked List", Description = "Đảo ngược danh sách liên kết.", OrderIndex = 7, Category = sortingCategory };
+        // 4. Role & Org Assignments (Using IDs to avoid IDENTITY_INSERT errors after Clear())
+        Console.WriteLine("🔗 Assigning Roles & Organizations...");
+        var roleAssignments = new List<UserRole>();
+        var orgMembers = new List<OrganizationMember>();
 
-        context.Topics.AddRange(twoSumTopic, containsDuplicateTopic, validPalindromeTopic, binarySearchTopic, singleNumberTopic, climbStairsTopic, reverseListTopic);
+        foreach (var u in adminList) roleAssignments.Add(new UserRole { UserId = u.Id, RoleId = roles[0].Id });
+        foreach (var u in teacherList) {
+            roleAssignments.Add(new UserRole { UserId = u.Id, RoleId = roles[1].Id });
+            orgMembers.Add(new OrganizationMember { UserId = u.Id, OrganizationId = faker.PickRandom(orgIds), Role = OrgRole.Teacher });
+        }
+        foreach (var u in studentList) {
+            roleAssignments.Add(new UserRole { UserId = u.Id, RoleId = roles[3].Id });
+            orgMembers.Add(new OrganizationMember { UserId = u.Id, OrganizationId = faker.PickRandom(orgIds), Role = OrgRole.Student });
+        }
 
-        var twoSumExercise = new Exercise { Title = "Two Sum", Content = "Cho mảng nums và target, trả về index của 2 số có tổng bằng target.", DifficultyLevel = "Easy", Points = 50, EntryPoint = "twoSum", Topic = twoSumTopic, TestCases = new List<TestCase> { new TestCase { InputJson = "[[2,7,11,15], 9]", ExpectedOutputJson = "[0,1]" } } };
-        var containsDuplicateExercise = new Exercise { Title = "Contains Duplicate", Content = "Trả về true nếu có giá trị xuất hiện ít nhất 2 lần.", DifficultyLevel = "Easy", Points = 50, EntryPoint = "containsDuplicate", Topic = containsDuplicateTopic, TestCases = new List<TestCase> { new TestCase { InputJson = "[[1,2,3,1]]", ExpectedOutputJson = "true" } } };
-        var validPalindromeExercise = new Exercise { Title = "Valid Palindrome", Content = "Chuỗi s có phải là Palindrome không?", DifficultyLevel = "Easy", Points = 50, EntryPoint = "isPalindrome", Topic = validPalindromeTopic, TestCases = new List<TestCase> { new TestCase { InputJson = "[\"racecar\"]", ExpectedOutputJson = "true" } } };
-        var binarySearchExercise = new Exercise { Title = "Binary Search", Content = "Tìm target trong mảng nums (đã sắp xếp).", DifficultyLevel = "Easy", Points = 50, EntryPoint = "binarySearch", Topic = binarySearchTopic, TestCases = new List<TestCase> { new TestCase { InputJson = "[[11,12,22,25,34,64,90], 25]", ExpectedOutputJson = "3" } } };
-        var singleNumberExercise = new Exercise { Title = "Single Number", Content = "Tìm phần tử xuất hiện 1 lần duy nhất trong mảng.", DifficultyLevel = "Easy", Points = 50, EntryPoint = "singleNumber", Topic = singleNumberTopic, TestCases = new List<TestCase> { new TestCase { InputJson = "[[4,1,2,1,2]]", ExpectedOutputJson = "4" } } };
-        var climbStairsExercise = new Exercise { Title = "Climbing Stairs", Content = "Có bao nhiêu cách để leo n bậc thang?", DifficultyLevel = "Easy", Points = 50, EntryPoint = "climbStairs", Topic = climbStairsTopic, TestCases = new List<TestCase> { new TestCase { InputJson = "[10]", ExpectedOutputJson = "89" } } };
-        var reverseListExercise = new Exercise { Title = "Reverse Linked List", Content = "Đảo ngược danh sách liên kết.", DifficultyLevel = "Easy", Points = 50, EntryPoint = "reverseList", Topic = reverseListTopic, TestCases = new List<TestCase> { new TestCase { InputJson = "[[1,2,3,4,5]]", ExpectedOutputJson = "[5,4,3,2,1]" } } };
+        await SaveInChunks(context, roleAssignments);
+        await SaveInChunks(context, orgMembers);
 
-
-        var generalForum = new Forum
-        {
-            Title = "Thảo luận chung",
-            Description = "Nơi trao đổi về mọi thứ liên quan đến thuật toán và lập trình."
-        };
-
-        var sortingForum = new Forum
-        {
-            Title = "Sorting & Searching",
-            Description = "Chuyên mục dành riêng cho các thuật toán sắp xếp và tìm kiếm."
-        };
-
-        context.Categories.AddRange(sortingCategory, graphCategory);
-        context.Topics.AddRange(bubbleSortTopic, quickSortTopic, bfsTopic, dijkstraTopic);
-        context.Exercises.AddRange(
-            bubbleSortExercise, quickSortExercise, bfsExercise, dijkstraExercise,
-            twoSumExercise, containsDuplicateExercise, validPalindromeExercise,
-            binarySearchExercise, singleNumberExercise, climbStairsExercise, reverseListExercise
-        );
-        context.Forums.AddRange(generalForum, sortingForum);
-
-        var springTournament = new Tournament
-        {
-            Title = "AlgoSphere Spring Championship 2026",
-            Description = "Giải đấu quy mô lớn nhất năm dành cho các lập trình viên chuyên nghiệp.",
-            StartDate = DateTime.UtcNow.AddDays(7),
-            EndDate = DateTime.UtcNow.AddDays(14),
-            Status = "Upcoming"
-        };
-
-        context.Tournaments.Add(springTournament);
-
-        var fptUniversity = new Organization
-        {
-            Name = "FPT University",
-            Domain = "fpt.edu.vn",
-            Type = "School"
-        };
-
-        context.Organizations.Add(fptUniversity);
-
+        // 5. Topics & Exercises
+        var categoryNames = new[] { "Cấu trúc dữ liệu", "Giải thuật cơ bản", "Quy hoạch động", "Đồ thị", "Toán học", "Trí tuệ nhân tạo" };
+        var categories = categoryNames.Select(name => new Category { Name = name }).ToList();
+        context.Categories.AddRange(categories);
         await context.SaveChangesAsync();
+
+        // 5.1 Tournaments (E-SPORTS DIVISION)
+        Console.WriteLine("🏆 Seeding E-Sports Division (Capacity Awareness)...");
+        var tournaments = new List<Tournament>
+        {
+            new Tournament { 
+                Title = "Spring Championship 2026", 
+                Description = "Giải đấu đã đủ số lượng, đang chờ khởi tạo sơ đồ thi đấu.", 
+                Status = "Ongoing", 
+                StartDate = DateTime.UtcNow.AddDays(-5), 
+                EndDate = DateTime.UtcNow.AddDays(2),
+                RoundDurationMinutes = 120,
+                MinParticipants = 64,
+                MaxParticipants = 64
+            },
+            new Tournament { 
+                Title = "Code Arena Master", 
+                Description = "Chờ đủ số lượng chiến binh tham gia để kích hoạt Bracket tự động.", 
+                Status = "Ongoing", 
+                StartDate = DateTime.UtcNow.AddDays(-1), 
+                EndDate = DateTime.UtcNow.AddDays(1),
+                RoundDurationMinutes = 60,
+                MinParticipants = 50,
+                MaxParticipants = 50
+            },
+            new Tournament { 
+                Title = "Summer Grand Prix 2026", 
+                Description = "Giải đấu sắp khởi tranh. Đăng ký ngay!", 
+                Status = "Upcoming", 
+                StartDate = DateTime.UtcNow.AddDays(15), 
+                EndDate = DateTime.UtcNow.AddDays(22),
+                MinParticipants = 32,
+                MaxParticipants = 128
+            }
+        };
+        context.Tournaments.AddRange(tournaments);
+        await context.SaveChangesAsync();
+
+        // Add participants
+        var participants = new List<TournamentParticipant>();
+        
+        // 1. Spring Championship (64/64 - Full)
+        var top64 = studentList.OrderByDescending(s => s.RankPoints).Take(64);
+        foreach(var s in top64) participants.Add(new TournamentParticipant { TournamentId = tournaments[0].Id, UserId = s.Id });
+
+        // 2. Code Arena Master (48/50 - Waiting for 2 more)
+        var next48 = studentList.OrderByDescending(s => s.RankPoints).Skip(64).Take(48);
+        foreach(var s in next48) participants.Add(new TournamentParticipant { TournamentId = tournaments[1].Id, UserId = s.Id });
+
+        await SaveInChunks(context, participants);
+
+        // 5. Topics & Exercises (Hardcoded Real Names for Solution Matching)
+        var categoryNames = new[] { "Cấu trúc dữ liệu", "Giải thuật cơ bản", "Quy hoạch động", "Xử lý mảng", "Đồ thị", "Toán học" };
+        var categories = categoryNames.Select(name => new Category { Name = name }).ToList();
+        context.Categories.AddRange(categories);
+        await context.SaveChangesAsync();
+
+        Console.WriteLine("📚 Seeding Real-World Topics & Exercises...");
+        var topics = new List<Topic>
+        {
+            new Topic { Name = "Giải thuật cơ bản", Description = "Sắp xếp và Tìm kiếm kinh điển.", OrderIndex = 1, CategoryId = categories[1].Id },
+            new Topic { Name = "Cấu trúc dữ liệu", Description = "Stack, Queue, Linked List, Tree.", OrderIndex = 2, CategoryId = categories[0].Id },
+            new Topic { Name = "Quy hoạch động", Description = "Tối ưu hóa bài toán bằng DP.", OrderIndex = 3, CategoryId = categories[2].Id },
+            new Topic { Name = "Xử lý mảng", Description = "Kỹ thuật thao tác mảng O(n).", OrderIndex = 4, CategoryId = categories[3].Id }
+        };
+        context.Topics.AddRange(topics);
+        await context.SaveChangesAsync();
+
+        var exercises = new List<Exercise>();
+        
+        // Topic 1: Algorithms
+        exercises.Add(new Exercise { Title = "Bubble Sort", TopicId = topics[0].Id, DifficultyLevel = "Easy", Points = 100, Content = "Viết thuật toán sắp xếp nổi bọt để sắp xếp mảng tăng dần.", TimeLimitMs = 1000, MemoryLimitKb = 64000 });
+        exercises.Add(new Exercise { Title = "Binary Search", TopicId = topics[0].Id, DifficultyLevel = "Easy", Points = 150, Content = "Tìm kiếm nhị phân trên mảng đã sắp xếp.", TimeLimitMs = 1000, MemoryLimitKb = 64000 });
+        exercises.Add(new Exercise { Title = "Merge Sort", TopicId = topics[0].Id, DifficultyLevel = "Medium", Points = 300, Content = "Sắp xếp trộn O(n log n).", TimeLimitMs = 1500, MemoryLimitKb = 128000 });
+        exercises.Add(new Exercise { Title = "Quick Sort", TopicId = topics[0].Id, DifficultyLevel = "Medium", Points = 350, Content = "Sắp xếp nhanh dùng Pivot.", TimeLimitMs = 1500, MemoryLimitKb = 128000 });
+
+        // Topic 2: Data Structures
+        exercises.Add(new Exercise { Title = "Valid Parentheses", TopicId = topics[1].Id, DifficultyLevel = "Easy", Points = 100, Content = "Kiểm tra dấu ngoặc hợp lệ dùng Stack.", TimeLimitMs = 1000, MemoryLimitKb = 64000 });
+        exercises.Add(new Exercise { Title = "Reverse Linked List", TopicId = topics[1].Id, DifficultyLevel = "Medium", Points = 250, Content = "Đảo ngược danh sách liên kết đơn.", TimeLimitMs = 1000, MemoryLimitKb = 64000 });
+
+        // Topic 3: DP
+        exercises.Add(new Exercise { Title = "Climbing Stairs", TopicId = topics[2].Id, DifficultyLevel = "Easy", Points = 100, Content = "Bài toán leo cầu thang (Fibonacci DP).", TimeLimitMs = 1000, MemoryLimitKb = 64000 });
+        exercises.Add(new Exercise { Title = "Fibonacci", TopicId = topics[2].Id, DifficultyLevel = "Easy", Points = 50, Content = "Tính số Fibonacci thứ n.", TimeLimitMs = 1000, MemoryLimitKb = 64000 });
+
+        // Topic 4: Arrays
+        exercises.Add(new Exercise { Title = "Two Sum", TopicId = topics[3].Id, DifficultyLevel = "Easy", Points = 100, Content = "Tìm 2 số có tổng bằng Target.", TimeLimitMs = 1000, MemoryLimitKb = 64000 });
+        exercises.Add(new Exercise { Title = "Contains Duplicate", TopicId = topics[3].Id, DifficultyLevel = "Easy", Points = 80, Content = "Kiểm tra mảng có phần tử trùng lặp.", TimeLimitMs = 1000, MemoryLimitKb = 64000 });
+        exercises.Add(new Exercise { Title = "Single Number", TopicId = topics[3].Id, DifficultyLevel = "Easy", Points = 120, Content = "Tìm số duy nhất xuất hiện 1 lần dùng XOR.", TimeLimitMs = 1000, MemoryLimitKb = 64000 });
+        exercises.Add(new Exercise { Title = "Max Subarray", TopicId = topics[3].Id, DifficultyLevel = "Medium", Points = 200, Content = "Tìm tổng mảng con lớn nhất (Kadane).", TimeLimitMs = 1000, MemoryLimitKb = 64000 });
+        exercises.Add(new Exercise { Title = "Best Time to Buy Stock", TopicId = topics[3].Id, DifficultyLevel = "Easy", Points = 150, Content = "Tối ưu lợi nhuận mua bán chứng khoán.", TimeLimitMs = 1000, MemoryLimitKb = 64000 });
+
+        // Generate some extra random ones for other topics to fill the database
+        for (int i = 4; i < 30; i++)
+        {
+            var extraTopic = new Topic { Name = faker.Commerce.ProductName(), OrderIndex = i + 1, CategoryId = faker.PickRandom(categories).Id };
+            context.Topics.Add(extraTopic);
+            await context.SaveChangesAsync();
+            for (int j = 0; j < 5; j++)
+            {
+                exercises.Add(new Exercise {
+                    Title = faker.Company.CatchPhrase(),
+                    TopicId = extraTopic.Id,
+                    DifficultyLevel = faker.PickRandom("Easy", "Medium", "Hard"),
+                    Points = faker.Random.Int(50, 500),
+                    Content = faker.Lorem.Paragraph(),
+                    TimeLimitMs = 1000,
+                    MemoryLimitKb = 64000
+                });
+            }
+        }
+
+        await SaveInChunks(context, exercises);
+        var exerciseIds = exercises.Select(e => e.Id).ToList();
+
+        // 6. Forums & Discussions
+        var forums = new List<Forum> {
+            new Forum { Title = "Thảo luận thuật toán", Description = "Nơi trao đổi các bài tập khó" },
+            new Forum { Title = "Góc tuyển dụng", Description = "Chia sẻ kinh nghiệm phỏng vấn Tech" }
+        };
+        context.Forums.AddRange(forums);
+        await context.SaveChangesAsync();
+
+        var discussions = new List<Discussion>();
+        for (int i = 1; i <= 50; i++)
+        {
+            discussions.Add(new Discussion {
+                ForumId = faker.PickRandom(forums).Id,
+                UserId = faker.PickRandom(studentList).Id,
+                Title = faker.Lorem.Sentence(5),
+                Content = faker.Lorem.Paragraph(),
+                Views = faker.Random.Int(0, 10000)
+            });
+        }
+        await SaveInChunks(context, discussions);
+
+        // 7. Comments (Hierarchical)
+        Console.WriteLine("💬 Generating hierarchical comments...");
+        var comments = new List<Comment>();
+        foreach (var disc in discussions)
+        {
+            int commentCount = faker.Random.Int(10, 20); // Reduced for speed in seed
+            for (int k = 1; k <= commentCount; k++)
+            {
+                var parent = new Comment {
+                    DiscussionId = disc.Id,
+                    UserId = faker.PickRandom(studentList).Id,
+                    Content = faker.Lorem.Sentence(),
+                    MaterializedPath = $"{k}/"
+                };
+                comments.Add(parent);
+            }
+        }
+        await SaveInChunks(context, comments);
+
+        // 8. Submissions (50,000 records)
+        Console.WriteLine("⚡ Generating 50,000 submissions (Chunked)...");
+        var studentIds = studentList.Select(s => s.Id).ToList();
+        
+        for (int batch = 0; batch < 25; batch++)
+        {
+            var batchSubmissions = new List<Submission>();
+            for (int i = 0; i < CHUNK_SIZE; i++)
+            {
+                var snippetIndex = faker.Random.Int(0, CodeSnippets.Length - 1);
+                var status = faker.PickRandom(Statuses);
+                var sub = new Submission
+                {
+                    UserId = faker.PickRandom(studentIds),
+                    ExerciseId = faker.PickRandom(exerciseIds),
+                    Status = status,
+                    SourceCode = CodeSnippets[snippetIndex],
+                    Language = snippetIndex switch {
+                        0 => "C#",
+                        1 => "JavaScript",
+                        2 => "Python",
+                        3 => "Python",
+                        4 => "Python",
+                        _ => "C#"
+                    },
+                    CreatedAt = faker.Date.Past(6),
+                    ExecutionTimeMs = status switch {
+                        "Time Limit Exceeded" => 1001,
+                        "Accepted" => faker.Random.Int(10, 200),
+                        _ => faker.Random.Int(50, 500)
+                    },
+                    MemoryUsedKb = status == "Memory Limit Exceeded" ? 65000 : faker.Random.Int(1024, 8192),
+                    SuspicionLevel = faker.Random.Bool(0.05f) ? "Low" : "None"
+                };
+                batchSubmissions.Add(sub);
+            }
+            await SaveInChunks(context, batchSubmissions);
+            Console.WriteLine($"✅ Batch {batch + 1}/25 finished ({ (batch + 1) * CHUNK_SIZE } total)");
+        }
+
+        // --- FINALIZATION ---
+        context.ChangeTracker.AutoDetectChangesEnabled = true;
+        timer.Stop();
+        Console.WriteLine($"\n✨ Seeding completed in {timer.Elapsed.TotalSeconds:F2}s");
+    }
+
+    private static async Task SaveInChunks<T>(AlgoSphereDbContext context, IEnumerable<T> entities) where T : class
+    {
+        var list = entities.ToList();
+        for (int i = 0; i < list.Count; i += CHUNK_SIZE)
+        {
+            var chunk = list.Skip(i).Take(CHUNK_SIZE);
+            context.Set<T>().AddRange(chunk);
+            await context.SaveChangesAsync();
+            context.ChangeTracker.Clear(); 
+        }
     }
 }
