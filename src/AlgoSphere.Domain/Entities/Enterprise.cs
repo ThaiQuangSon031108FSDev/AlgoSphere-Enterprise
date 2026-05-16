@@ -47,4 +47,32 @@ public class Organization : BaseEntity
     public string Type { get; set; } = "School"; // School, Company
     
     public ICollection<User> Members { get; set; } = new List<User>();
+    public ICollection<Classroom> Classrooms { get; set; } = new List<Classroom>();
+}
+
+public class Classroom : BaseEntity
+{
+    public string Name { get; set; } = string.Empty;
+    public string JoinCode { get; set; } = string.Empty;
+    
+    public int OrganizationId { get; set; }
+    public Organization Organization { get; set; } = null!;
+    
+    public int TeacherId { get; set; }
+    public User Teacher { get; set; } = null!;
+    
+    public ICollection<User> Students { get; set; } = new List<User>();
+    public ICollection<Assignment> Assignments { get; set; } = new List<Assignment>();
+}
+
+public class Assignment : BaseEntity
+{
+    public string Title { get; set; } = string.Empty;
+    public DateTime Deadline { get; set; }
+    
+    public int ClassroomId { get; set; }
+    public Classroom Classroom { get; set; } = null!;
+    
+    public int ExerciseId { get; set; }
+    public Exercise Exercise { get; set; } = null!;
 }

@@ -142,6 +142,10 @@ namespace AlgoSphere.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("EntryPoint")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<int>("MemoryLimitKb")
                         .HasColumnType("int");
 
@@ -349,6 +353,41 @@ namespace AlgoSphere.Infrastructure.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("Submissions");
+                });
+
+            modelBuilder.Entity("AlgoSphere.Domain.Entities.TestCase", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("ExerciseId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ExpectedOutputJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("InputJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsHidden")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExerciseId");
+
+                    b.ToTable("TestCases");
                 });
 
             modelBuilder.Entity("AlgoSphere.Domain.Entities.Topic", b =>
@@ -604,6 +643,17 @@ namespace AlgoSphere.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("AlgoSphere.Domain.Entities.TestCase", b =>
+                {
+                    b.HasOne("AlgoSphere.Domain.Entities.Exercise", "Exercise")
+                        .WithMany("TestCases")
+                        .HasForeignKey("ExerciseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Exercise");
+                });
+
             modelBuilder.Entity("AlgoSphere.Domain.Entities.Topic", b =>
                 {
                     b.HasOne("AlgoSphere.Domain.Entities.Category", "Category")
@@ -673,6 +723,8 @@ namespace AlgoSphere.Infrastructure.Migrations
             modelBuilder.Entity("AlgoSphere.Domain.Entities.Exercise", b =>
                 {
                     b.Navigation("Submissions");
+
+                    b.Navigation("TestCases");
                 });
 
             modelBuilder.Entity("AlgoSphere.Domain.Entities.Forum", b =>

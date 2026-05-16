@@ -178,6 +178,7 @@ const handleRegister = async () => {
               Username
             </label>
             <input
+              id="login-username"
               v-model="loginUsername"
               type="text"
               required
@@ -196,6 +197,7 @@ const handleRegister = async () => {
             </label>
             <div class="relative">
               <input
+                id="login-password"
                 v-model="loginPassword"
                 :type="showLoginPw ? 'text' : 'password'"
                 required
@@ -219,7 +221,7 @@ const handleRegister = async () => {
             {{ loginError }}
           </p>
 
-          <button type="submit" :disabled="loginLoading"
+          <button id="login-submit" type="submit" :disabled="loginLoading"
             class="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm transition-all disabled:opacity-50"
             style="background:linear-gradient(135deg,#10B981,#059669);color:#fff;">
             <LogIn v-if="!loginLoading" class="w-4 h-4" />

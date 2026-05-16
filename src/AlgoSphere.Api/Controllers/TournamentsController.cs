@@ -1,4 +1,5 @@
 using AlgoSphere.Application.Features.Tournaments.Commands.JoinTournament;
+using AlgoSphere.Application.Features.Tournaments.Commands.GenerateBrackets;
 using AlgoSphere.Application.Features.Tournaments.Queries.GetTournaments;
 using AlgoSphere.Application.Features.Tournaments.Queries.GetTournamentBrackets;
 using MediatR;
@@ -41,5 +42,13 @@ public class TournamentsController : ControllerBase
 
         var result = await _mediator.Send(new JoinTournamentCommand(id, userId));
         return result.Success ? Ok(result) : BadRequest(result);
+    }
+
+    [HttpPost("{id}/start")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<bool>> Start(int id)
+    {
+        var result = await _mediator.Send(new GenerateBracketsCommand(id));
+        return result ? Ok(result) : BadRequest("Không thể bắt đầu giải đấu (cần ít nhất 2 người tham gia).");
     }
 }

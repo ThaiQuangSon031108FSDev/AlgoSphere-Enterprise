@@ -36,15 +36,15 @@ public class ExercisesController : ControllerBase
 
     [HttpPost("execute")]
     [Authorize]
-    public async Task<ActionResult<ExecutionResult>> Execute([FromBody] ExecuteCodeRequestDto dto)
+    public async Task<ActionResult<ExecuteCodeResponse>> Execute([FromBody] ExecuteCodeRequestDto dto)
     {
         var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userIdClaim == null || !int.TryParse(userIdClaim, out var userId))
             return Unauthorized();
 
-        var command = new ExecuteCodeCommand(userId, dto.ExerciseId, dto.Code, dto.Language);
+        var command = new ExecuteCodeCommand(userId, dto.ExerciseId, dto.Code, dto.Language, dto.Deltas);
         return await _mediator.Send(command);
     }
 }
 
-public record ExecuteCodeRequestDto(int ExerciseId, string Code, string Language);
+public record ExecuteCodeRequestDto(int ExerciseId, string Code, string Language, List<object>? Deltas);

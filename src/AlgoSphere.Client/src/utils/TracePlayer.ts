@@ -1,7 +1,7 @@
 export interface TraceStep {
   s: number;           // step index
   l?: number;          // source code line number
-  a: 'cmp' | 'swp' | 'vis' | 'fnd' | 'done'; // action type
+  a: 'cmp' | 'swp' | 'vis' | 'fnd' | 'done' | 'node' | 'link' | 'err'; // action type
   t: number[];         // target indices
   v?: Record<string, any>; // variable snapshot
   msg?: string;        // human-readable message
@@ -17,7 +17,9 @@ type StateChangeCallback = (
   state: any[],
   step: TraceStep | null,
   index: number,
-  total: number
+  total: number,
+  dsState?: Record<string, any>,
+  nodeState?: any
 ) => void;
 
 /**
@@ -25,7 +27,9 @@ type StateChangeCallback = (
  * Each step stores a full state snapshot so stepBackward is O(1).
  */
 export class TracePlayer {
-  private snapshots: any[][];    // snapshots[i] = state AFTER step i
+  private snapshots: any[][];    // snapshots[i] = array state AFTER step i
+  private dsSnapshots: Record<string, any>[]; // snapshots[i] = DS state AFTER step i
+  private nodeSnapshots: any[]; // snapshots[i] = Node/Link state AFTER step i
   private trace: TraceStep[];
   private currentIndex: number = -1;
   private onStateChange: StateChangeCallback;
@@ -38,24 +42,71 @@ export class TracePlayer {
   constructor(log: TraceLog, onStateChange: StateChangeCallback) {
     this.trace = log.trace;
     this.onStateChange = onStateChange;
-    this.snapshots = this.buildSnapshots(log.initialState, log.trace);
+    const { arraySnapshots, dsSnapshots, nodeSnapshots } = this.buildSnapshots(log.initialState, log.trace);
+    this.snapshots = arraySnapshots;
+    this.dsSnapshots = dsSnapshots;
+    this.nodeSnapshots = nodeSnapshots;
   }
 
   // Pre-compute all state snapshots upfront — O(n) one-time cost
-  private buildSnapshots(initial: any[], trace: TraceStep[]): any[][] {
-    const snapshots: any[][] = [];
-    let state = [...initial];
+  private buildSnapshots(initial: any[], trace: TraceStep[]): { arraySnapshots: any[][], dsSnapshots: any[], nodeSnapshots: any[] } {
+    const arraySnapshots: any[][] = [];
+    const dsSnapshots: any[] = [];
+    const nodeSnapshots: any[] = [];
+    
+    let arrayState = [...initial];
+    let dsState: Record<string, any> = {};
+    let nodeState: { nodes: Record<number, any>, links: any[] } = { nodes: {}, links: [] };
 
     for (const step of trace) {
+      // Handle array swaps
       if (step.a === 'swp' && step.t.length >= 2) {
-        state = [...state];
+        arrayState = [...arrayState];
         const [i, j] = step.t;
-        [state[i], state[j]] = [state[j], state[i]];
+        [arrayState[i], arrayState[j]] = [arrayState[j], arrayState[i]];
       }
-      snapshots.push([...state]);
+
+      // Handle data structure visualization (vis action)
+      if (step.a === 'vis' && step.v?.ds) {
+        const { name, op, val } = step.v.ds;
+        if (!dsState[name]) dsState[name] = { type: 'Set', items: [] };
+        
+        if (op === 'add') {
+          if (!dsState[name].items.includes(val)) {
+            dsState[name] = { ...dsState[name], items: [...dsState[name].items, val] };
+          }
+        }
+      }
+
+      // Handle Node creation
+      if (step.a === 'node') {
+        const [id] = step.t;
+        nodeState = { ...nodeState, nodes: { ...nodeState.nodes, [id]: { id, val: step.v?.val } } };
+      }
+
+      // Handle Link creation/update
+      if (step.a === 'link') {
+        const [source, target] = step.t;
+        const prop = step.v?.prop;
+        // Remove old link from this source/prop if exists
+        const filteredLinks = nodeState.links.filter(l => !(l.source === source && l.prop === prop));
+        if (target !== -1) {
+          nodeState = { ...nodeState, links: [...filteredLinks, { source, target, prop }] };
+        } else {
+          nodeState = { ...nodeState, links: filteredLinks };
+        }
+      }
+
+      arraySnapshots.push([...arrayState]);
+      dsSnapshots.push({ ...dsState });
+      // Deep copy nodeState so each snapshot is independent
+      nodeSnapshots.push({
+        nodes: { ...nodeState.nodes },
+        links: [...nodeState.links],
+      });
     }
 
-    return snapshots;
+    return { arraySnapshots, dsSnapshots, nodeSnapshots };
   }
 
   get isPlaying() { return this._isPlaying; }
@@ -136,8 +187,10 @@ export class TracePlayer {
       return;
     }
     const state = this.snapshots[this.currentIndex];
+    const dsState = this.dsSnapshots[this.currentIndex];
+    const nodeState = this.nodeSnapshots[this.currentIndex];
     const step = this.trace[this.currentIndex];
-    this.onStateChange([...state], step, this.currentIndex, this.trace.length);
+    this.onStateChange([...state], step, this.currentIndex, this.trace.length, dsState, nodeState);
   }
 
   private emitInitial() {
@@ -159,6 +212,10 @@ export class TracePlayer {
   static create(log: TraceLog, onStateChange: StateChangeCallback): TracePlayer {
     const player = new TracePlayer(log, onStateChange);
     player._initialCache = [...log.initialState];
+    // Auto-play immediately so the visualization starts right away
+    if (player.trace.length > 0) {
+      player.play();
+    }
     return player;
   }
 

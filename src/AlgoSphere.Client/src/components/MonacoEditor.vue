@@ -17,11 +17,13 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]
+  'deltas': [deltas: any[]]
 }>()
 
 const containerRef = ref<HTMLDivElement | null>(null)
 let editor: any = null
 let decorations: string[] = []
+const deltas = ref<any[]>([])
 
 onMounted(async () => {
   if (!containerRef.value) return
@@ -88,9 +90,25 @@ onMounted(async () => {
     bracketPairColorization: { enabled: true },
   })
 
-  // Emit changes
-  editor.onDidChangeModelContent(() => {
-    emit('update:modelValue', editor.getValue())
+  // Emit changes & track deltas
+  editor.onDidChangeModelContent((e: any) => {
+    const val = editor.getValue()
+    emit('update:modelValue', val)
+
+    // Track deltas for Anti-Cheat
+    const now = Date.now()
+    e.changes.forEach((change: any) => {
+      const type = change.text.length > 1 ? 'paste' : (change.rangeLength > 0 && change.text.length === 0 ? 'delete' : 'type')
+      deltas.value.push({
+        t: now,
+        a: type,
+        l: change.text.length,
+        rl: change.rangeLength
+      })
+    })
+    
+    // Periodically emit deltas (or could just expose via ref)
+    emit('deltas', [...deltas.value])
   })
 
   // Highlight initial line if set
@@ -135,6 +153,11 @@ watch(() => props.highlightLine, (line) => {
 
 onBeforeUnmount(() => {
   editor?.dispose()
+})
+
+defineExpose({
+  getDeltas: () => [...deltas.value],
+  resetDeltas: () => { deltas.value = [] }
 })
 </script>
 

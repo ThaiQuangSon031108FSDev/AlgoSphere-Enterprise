@@ -12,6 +12,40 @@ public static class DbInitializer
 
         if (await context.Categories.AnyAsync()) return;
 
+        // Seed roles
+        var adminRole = new Role { RoleName = "Admin" };
+        var teacherRole = new Role { RoleName = "Teacher" };
+        var studentRole = new Role { RoleName = "Student" };
+        context.Roles.AddRange(adminRole, teacherRole, studentRole);
+        await context.SaveChangesAsync();
+
+        // Seed users with BCrypt
+        var adminUser = new User
+        {
+            Username = "admin",
+            Email = "admin@test.com",
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword("123456"),
+            Status = "Active",
+            RankPoints = 1000
+        };
+
+        var studentUser = new User
+        {
+            Username = "student",
+            Email = "student@test.com",
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword("123456"),
+            Status = "Active",
+            RankPoints = 0
+        };
+
+        context.Users.AddRange(adminUser, studentUser);
+        await context.SaveChangesAsync();
+
+        // Assign roles
+        context.UserRoles.Add(new UserRole { User = adminUser, Role = adminRole });
+        context.UserRoles.Add(new UserRole { User = studentUser, Role = studentRole });
+        await context.SaveChangesAsync();
+
         var sortingCategory = new Category { Name = "Sorting Algorithms" };
         var graphCategory = new Category { Name = "Graph Theory" };
 
@@ -55,7 +89,12 @@ public static class DbInitializer
             TimeLimitMs = 1000,
             MemoryLimitKb = 64000,
             Points = 100,
-            Topic = bubbleSortTopic
+            EntryPoint = "bubbleSort",
+            Topic = bubbleSortTopic,
+            TestCases = new List<TestCase>
+            {
+                new TestCase { InputJson = "[[64, 34, 25, 12, 22, 11, 90]]", ExpectedOutputJson = "[]", IsHidden = false }
+            }
         };
 
         var quickSortExercise = new Exercise
@@ -64,7 +103,12 @@ public static class DbInitializer
             Content = "Triển khai Quick Sort sử dụng phân hoạch Lomuto.",
             DifficultyLevel = "Medium",
             Points = 200,
-            Topic = quickSortTopic
+            EntryPoint = "quickSort",
+            Topic = quickSortTopic,
+            TestCases = new List<TestCase>
+            {
+                new TestCase { InputJson = "[[64, 34, 25, 12, 22, 11, 90]]", ExpectedOutputJson = "[]", IsHidden = false }
+            }
         };
 
         var bfsExercise = new Exercise
@@ -85,6 +129,26 @@ public static class DbInitializer
             Topic = dijkstraTopic
         };
 
+        // --- Bổ sung các bài tập kinh điển (LeetCode-style) ---
+        var twoSumTopic = new Topic { Name = "Two Sum", Description = "Tìm cặp số có tổng bằng target.", OrderIndex = 1, Category = sortingCategory };
+        var containsDuplicateTopic = new Topic { Name = "Contains Duplicate", Description = "Kiểm tra mảng có phần tử trùng lặp.", OrderIndex = 2, Category = sortingCategory };
+        var validPalindromeTopic = new Topic { Name = "Valid Palindrome", Description = "Kiểm tra chuỗi đối xứng.", OrderIndex = 3, Category = sortingCategory };
+        var binarySearchTopic = new Topic { Name = "Binary Search", Description = "Tìm kiếm nhị phân trên mảng đã sắp xếp.", OrderIndex = 4, Category = sortingCategory };
+        var singleNumberTopic = new Topic { Name = "Single Number", Description = "Tìm số duy nhất không bị lặp lại.", OrderIndex = 5, Category = sortingCategory };
+        var climbStairsTopic = new Topic { Name = "Climbing Stairs", Description = "Quy hoạch động cơ bản.", OrderIndex = 6, Category = sortingCategory };
+        var reverseListTopic = new Topic { Name = "Reverse Linked List", Description = "Đảo ngược danh sách liên kết.", OrderIndex = 7, Category = sortingCategory };
+
+        context.Topics.AddRange(twoSumTopic, containsDuplicateTopic, validPalindromeTopic, binarySearchTopic, singleNumberTopic, climbStairsTopic, reverseListTopic);
+
+        var twoSumExercise = new Exercise { Title = "Two Sum", Content = "Cho mảng nums và target, trả về index của 2 số có tổng bằng target.", DifficultyLevel = "Easy", Points = 50, EntryPoint = "twoSum", Topic = twoSumTopic, TestCases = new List<TestCase> { new TestCase { InputJson = "[[2,7,11,15], 9]", ExpectedOutputJson = "[0,1]" } } };
+        var containsDuplicateExercise = new Exercise { Title = "Contains Duplicate", Content = "Trả về true nếu có giá trị xuất hiện ít nhất 2 lần.", DifficultyLevel = "Easy", Points = 50, EntryPoint = "containsDuplicate", Topic = containsDuplicateTopic, TestCases = new List<TestCase> { new TestCase { InputJson = "[[1,2,3,1]]", ExpectedOutputJson = "true" } } };
+        var validPalindromeExercise = new Exercise { Title = "Valid Palindrome", Content = "Chuỗi s có phải là Palindrome không?", DifficultyLevel = "Easy", Points = 50, EntryPoint = "isPalindrome", Topic = validPalindromeTopic, TestCases = new List<TestCase> { new TestCase { InputJson = "[\"racecar\"]", ExpectedOutputJson = "true" } } };
+        var binarySearchExercise = new Exercise { Title = "Binary Search", Content = "Tìm target trong mảng nums (đã sắp xếp).", DifficultyLevel = "Easy", Points = 50, EntryPoint = "binarySearch", Topic = binarySearchTopic, TestCases = new List<TestCase> { new TestCase { InputJson = "[[11,12,22,25,34,64,90], 25]", ExpectedOutputJson = "3" } } };
+        var singleNumberExercise = new Exercise { Title = "Single Number", Content = "Tìm phần tử xuất hiện 1 lần duy nhất trong mảng.", DifficultyLevel = "Easy", Points = 50, EntryPoint = "singleNumber", Topic = singleNumberTopic, TestCases = new List<TestCase> { new TestCase { InputJson = "[[4,1,2,1,2]]", ExpectedOutputJson = "4" } } };
+        var climbStairsExercise = new Exercise { Title = "Climbing Stairs", Content = "Có bao nhiêu cách để leo n bậc thang?", DifficultyLevel = "Easy", Points = 50, EntryPoint = "climbStairs", Topic = climbStairsTopic, TestCases = new List<TestCase> { new TestCase { InputJson = "[10]", ExpectedOutputJson = "89" } } };
+        var reverseListExercise = new Exercise { Title = "Reverse Linked List", Content = "Đảo ngược danh sách liên kết.", DifficultyLevel = "Easy", Points = 50, EntryPoint = "reverseList", Topic = reverseListTopic, TestCases = new List<TestCase> { new TestCase { InputJson = "[[1,2,3,4,5]]", ExpectedOutputJson = "[5,4,3,2,1]" } } };
+
+
         var generalForum = new Forum
         {
             Title = "Thảo luận chung",
@@ -99,7 +163,11 @@ public static class DbInitializer
 
         context.Categories.AddRange(sortingCategory, graphCategory);
         context.Topics.AddRange(bubbleSortTopic, quickSortTopic, bfsTopic, dijkstraTopic);
-        context.Exercises.AddRange(bubbleSortExercise, quickSortExercise, bfsExercise, dijkstraExercise);
+        context.Exercises.AddRange(
+            bubbleSortExercise, quickSortExercise, bfsExercise, dijkstraExercise,
+            twoSumExercise, containsDuplicateExercise, validPalindromeExercise,
+            binarySearchExercise, singleNumberExercise, climbStairsExercise, reverseListExercise
+        );
         context.Forums.AddRange(generalForum, sortingForum);
 
         var springTournament = new Tournament

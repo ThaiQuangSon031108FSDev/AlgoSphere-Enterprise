@@ -8,7 +8,12 @@ export default defineConfig({
     tailwindcss(),
     vue(),
   ],
+  test: {
+    globals: true,
+    environment: 'happy-dom',
+  },
   server: {
+
     proxy: {
       // Forward /api/* → backend (port 5000 trực tiếp, không qua nginx)
       '/api': {

@@ -17,15 +17,20 @@ public class AlgoSphereDbContext : DbContext, IAlgoSphereDbContext
     public DbSet<Topic> Topics => Set<Topic>();
     public DbSet<Exercise> Exercises => Set<Exercise>();
     public DbSet<Submission> Submissions => Set<Submission>();
+    public DbSet<TestCase> TestCases => Set<TestCase>();
+    public DbSet<SubmissionCodeDelta> SubmissionCodeDeltas => Set<SubmissionCodeDelta>();
 
     public DbSet<Forum> Forums => Set<Forum>();
     public DbSet<Discussion> Discussions => Set<Discussion>();
     public DbSet<Comment> Comments => Set<Comment>();
 
+    public DbSet<Organization> Organizations => Set<Organization>();
+    public DbSet<Classroom> Classrooms => Set<Classroom>();
+    public DbSet<Assignment> Assignments => Set<Assignment>();
+
     public DbSet<Tournament> Tournaments => Set<Tournament>();
     public DbSet<TournamentParticipant> TournamentParticipants => Set<TournamentParticipant>();
     public DbSet<Match> Matches => Set<Match>();
-    public DbSet<Organization> Organizations => Set<Organization>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -62,6 +67,13 @@ public class AlgoSphereDbContext : DbContext, IAlgoSphereDbContext
             .WithMany(t => t.Exercises)
             .HasForeignKey(e => e.TopicId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // TestCase → Exercise (Cascade: deleting exercise deletes its test cases)
+        modelBuilder.Entity<TestCase>()
+            .HasOne(tc => tc.Exercise)
+            .WithMany(e => e.TestCases)
+            .HasForeignKey(tc => tc.ExerciseId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         // Submission → User (Restrict — avoids cascade cycle via Exercise)
         modelBuilder.Entity<Submission>()
@@ -103,6 +115,25 @@ public class AlgoSphereDbContext : DbContext, IAlgoSphereDbContext
             .HasOne<Comment>()
             .WithMany()
             .HasForeignKey(c => c.ParentCommentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // SubmissionCodeDelta -> Submission (1-1)
+        modelBuilder.Entity<SubmissionCodeDelta>()
+            .HasOne(scd => scd.Submission)
+            .WithOne(s => s.CodeDelta)
+            .HasForeignKey<SubmissionCodeDelta>(scd => scd.SubmissionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Classroom -> Students (Many-to-Many)
+        modelBuilder.Entity<Classroom>()
+            .HasMany(c => c.Students)
+            .WithMany()
+            .UsingEntity(j => j.ToTable("ClassroomStudents"));
+
+        modelBuilder.Entity<Classroom>()
+            .HasOne(c => c.Teacher)
+            .WithMany()
+            .HasForeignKey(c => c.TeacherId)
             .OnDelete(DeleteBehavior.Restrict);
     }
 }

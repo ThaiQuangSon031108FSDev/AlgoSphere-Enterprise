@@ -133,7 +133,20 @@ public class ArenaHub : Hub
         await Clients.Caller.SendAsync("ReceiveStatus", "Left queue.");
     }
 
-    /// <summary>Relay progress (lines solved, test pass %) to opponent in real-time.</summary>
+    /// <summary>Join an ongoing match as an observer.</summary>
+    public async Task JoinMatchAsSpectator(string matchId)
+    {
+        await Groups.AddToGroupAsync(Context.ConnectionId, matchId);
+        await Clients.Caller.SendAsync("ReceiveStatus", "Watching match: " + matchId);
+    }
+
+    /// <summary>Join a tournament group to receive bracket updates.</summary>
+    public async Task JoinTournamentGroup(int tournamentId)
+    {
+        await Groups.AddToGroupAsync(Context.ConnectionId, $"tournament_{tournamentId}");
+    }
+
+    /// <summary>Relay progress (lines solved, test pass %) to all in match (including spectators).</summary>
     public async Task SendProgress(string matchId, int progressPercent)
     {
         await Clients.OthersInGroup(matchId).SendAsync("OpponentProgress", progressPercent);
@@ -147,5 +160,11 @@ public class ArenaHub : Hub
             MatchId = matchId,
             Winner  = won ? Context.ConnectionId : "opponent"
         });
+    }
+
+    /// <summary>Broadcast bracket update to all tournament observers.</summary>
+    public async Task SendBracketUpdate(int tournamentId)
+    {
+        await Clients.Group($"tournament_{tournamentId}").SendAsync("BracketUpdated");
     }
 }

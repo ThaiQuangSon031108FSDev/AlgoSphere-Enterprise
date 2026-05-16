@@ -127,6 +127,7 @@ const progressPct = (n: SkillNode) =>
           <div
             v-for="node in lane.nodes"
             :key="node.topicId"
+            :data-topic-id="node.topicId"
             @click="handleNodeClick(node)"
             class="relative p-5 rounded-2xl transition-all duration-300 select-none"
             :class="node.status !== 'locked' ? 'cursor-pointer hover:scale-[1.02] hover:-translate-y-0.5' : 'cursor-not-allowed opacity-40'"

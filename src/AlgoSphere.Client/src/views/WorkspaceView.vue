@@ -2,8 +2,10 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { API_BASE } from '../utils/api'
-import { Play, Pause, RotateCcw, ChevronLeft, ChevronRight, Save, Sparkles, Send, X, BookOpen } from 'lucide-vue-next'
+import { Play, Pause, RotateCcw, ChevronLeft, ChevronRight, Save, Sparkles, Send, X, BookOpen, Eye, Zap, Cpu, Code2 } from 'lucide-vue-next'
 import * as d3 from 'd3'
+import * as signalR from '@microsoft/signalr'
+import { HUB_BASE } from '../utils/api'
 import { TracePlayer, type TraceLog, type TraceStep } from '../utils/TracePlayer'
 import MonacoEditor from '../components/MonacoEditor.vue'
 
@@ -162,47 +164,152 @@ const code = ref('// Viết thuật toán Bubble Sort của bạn...\nfunction b
 const loading = ref(false)
 const aiLoading = ref(false)
 const userAiInput = ref('')
+const editorRef = ref<any>(null)
 const currentStep = ref<TraceStep | null>(null)
 const currentIndex = ref(-1)
 const totalSteps = ref(0)
 const visualizerData = ref<number[]>([])
 const highlightLine = ref<number | null>(null)
 // Full TraceLog — passed to AI for rich context
-const lastTraceLog = ref<TraceLog | null>(null)
-const aiMessages = ref<{ role: 'ai' | 'user'; text: string }[]>([
-  { role: 'ai', text: 'Chào bạn! Tôi là AI Mentor. Viết thuật toán → Run Code để bắt đầu trực quan hóa. Sau đó hỏi tôi bất cứ điều gì! 💡' },
-])
+// ── Gamification ──────────────────────────────────────────────────
+const showLevelUpModal = ref(false)
+const showSuccessOverlay = ref(false)
+const gamiData = ref<any>(null)
 
-const SPEEDS = [0.25, 0.5, 1, 2, 4]
-const speedIdx = ref(2) // default 1x
-const currentSpeed = computed(() => SPEEDS[speedIdx.value])
-const isPlaying = ref(false)
+// ── Arena / Real-time ──────────────────────────────────────────────
+const isArenaMatch = computed(() => !!route.query.matchId)
+const isSpectator = computed(() => route.query.mode === 'spectator')
+const opponentProgress = ref(0)
+const myProgress = ref(0) // Used for spectator to track player 1
+const matchStatus = ref('Đang thi đấu...')
+const dsState = ref<Record<string, any>>({}) // State of secondary structures (Set/Map)
+let arenaConnection: signalR.HubConnection | null = null
 
-let player: TracePlayer | null = null
+const setupArenaHub = async () => {
+  if (!isArenaMatch.value) return
+  const token = localStorage.getItem('token')
+  arenaConnection = new signalR.HubConnectionBuilder()
+    .withUrl(`${HUB_BASE}/ws/arena`, { accessTokenFactory: () => token! })
+    .withAutomaticReconnect()
+    .build()
 
-// ── D3 Visualizer ────────────────────────────────────────────────
-const svgRef = ref<SVGSVGElement | null>(null)
+  arenaConnection.on('OpponentProgress', (prog: number) => {
+    opponentProgress.value = prog
+  })
+  
+  // If spectator, we might receive progress for 'both' if the Hub is updated
+  // For now, we'll assume Hub broadcasts to all in group
+  
+  arenaConnection.on('MatchEnded', (data: any) => {
+    matchStatus.value = data.winner === arenaConnection?.connectionId ? '🏆 BẠN THẮNG!' : '❌ ĐỐI THỦ ĐÃ THẮNG!'
+    if (isSpectator.value) matchStatus.value = '🏁 TRẬN ĐẤU KẾT THÚC'
+  })
 
-const ACTION_COLORS: Record<string, string> = {
-  cmp: '#F97316',  // orange — comparing
-  swp: '#10B981',  // emerald — swapping
-  vis: '#3B82F6',  // blue — visiting
-  fnd: '#FBBF24',  // gold — found
-  done: '#6EE7B7', // light emerald — sorted
+  try {
+    await arenaConnection.start()
+    if (isSpectator.value) {
+      await arenaConnection.invoke('JoinMatchAsSpectator', route.query.matchId)
+    }
+  } catch (e) { console.error('Arena Hub failed', e) }
 }
 
-const renderVisualizer = (data: number[], step: TraceStep | null) => {
-  if (!svgRef.value || !data.length) return
+const renderNodeLinkVisualizer = (data: { nodes: Record<number, any>, links: any[] }) => {
+  if (!svgRef.value) return
   const svg = d3.select(svgRef.value)
   svg.selectAll('*').remove()
 
-  const W = svgRef.value.clientWidth || 600
-  const H = svgRef.value.clientHeight || 280
+  const width = svgRef.value.clientWidth || 600
+  const height = svgRef.value.clientHeight || 400
+  const padding = 40  // keep nodes away from edges
+
+  const nodes = Object.values(data.nodes)
+  if (nodes.length === 0) return
+
+  const links = data.links.map(l => ({
+    source: l.source,
+    target: l.target,
+    label: l.prop
+  }))
+
+  const simulation = d3.forceSimulation(nodes as any)
+    .force('link', d3.forceLink(links).id((d: any) => d.id).distance(90).strength(1))
+    .force('charge', d3.forceManyBody().strength(-200))
+    .force('center', d3.forceCenter(width / 2, height / 2))
+    .force('collision', d3.forceCollide(35))
+    // Boundary force: keep nodes inside the SVG
+    .force('bound', () => {
+      for (const node of (nodes as any[])) {
+        node.x = Math.max(padding, Math.min(width - padding, node.x ?? width / 2))
+        node.y = Math.max(padding, Math.min(height - padding, node.y ?? height / 2))
+      }
+    })
+
+  const link = svg.append('g')
+    .selectAll('line')
+    .data(links)
+    .enter().append('line')
+    .attr('stroke', '#475569')
+    .attr('stroke-width', 2)
+    .attr('marker-end', 'url(#arrowhead)')
+
+  svg.append('defs').append('marker')
+    .attr('id', 'arrowhead')
+    .attr('viewBox', '-0 -5 10 10')
+    .attr('refX', 20)
+    .attr('refY', 0)
+    .attr('orient', 'auto')
+    .attr('markerWidth', 6)
+    .attr('markerHeight', 6)
+    .attr('xoverflow', 'visible')
+    .append('svg:path')
+    .attr('d', 'M 0,-5 L 10 ,0 L 0,5')
+    .attr('fill', '#475569')
+    .style('stroke', 'none')
+
+  const node = svg.append('g')
+    .selectAll('circle')
+    .data(nodes)
+    .enter().append('g')
+
+  node.append('circle')
+    .attr('r', 18)
+    .attr('fill', '#0F172A')
+    .attr('stroke', '#10B981')
+    .attr('stroke-width', 2)
+
+  node.append('text')
+    .attr('text-anchor', 'middle')
+    .attr('dy', '.35em')
+    .attr('fill', '#FFF')
+    .attr('font-size', '12px')
+    .attr('font-weight', 'bold')
+    .text((d: any) => d.val)
+
+  simulation.on('tick', () => {
+    link
+      .attr('x1', (d: any) => d.source.x)
+      .attr('y1', (d: any) => d.source.y)
+      .attr('x2', (d: any) => d.target.x)
+      .attr('y2', (d: any) => d.target.y)
+
+    node.attr('transform', (d: any) => `translate(${d.x},${d.y})`)
+  })
+}
+
+const renderVisualizer = (data: any[], step: TraceStep | null) => {
+  if (!svgRef.value) return
+  const svg = d3.select(svgRef.value)
+  svg.selectAll('*').remove()
+
+  if (totalSteps.value === 0 && !isPlaying.value) return;
+
+  const W = svgRef.value.clientWidth
+  const H = svgRef.value.clientHeight
 
   const x = d3.scaleBand()
     .domain(data.map((_, i) => i.toString()))
-    .range([12, W - 12])
-    .padding(0.15)
+    .range([8, W - 8])
+    .padding(0.2)
 
   const y = d3.scaleLinear()
     .domain([0, (d3.max(data) ?? 100) * 1.15])
@@ -220,7 +327,6 @@ const renderVisualizer = (data: number[], step: TraceStep | null) => {
     .append('g')
     .attr('class', 'bar')
 
-  // Shadow glow for active bars
   const defs = svg.append('defs')
   const filter = defs.append('filter').attr('id', 'bar-glow')
   filter.append('feGaussianBlur').attr('stdDeviation', '4').attr('result', 'coloredBlur')
@@ -250,6 +356,30 @@ const renderVisualizer = (data: number[], step: TraceStep | null) => {
     .text(d => d)
 }
 
+const lastTraceLog = ref<TraceLog | null>(null)
+const aiMessages = ref<{ role: 'ai' | 'user'; text: string }[]>([
+  { role: 'ai', text: 'Chào bạn! Tôi là AI Mentor. Viết thuật toán → Run Code để bắt đầu trực quan hóa. Sau đó hỏi tôi bất cứ điều gì! 💡' },
+])
+
+const SPEEDS = [0.25, 0.5, 1, 2, 4]
+const speedIdx = ref(2) // default 1x
+const currentSpeed = computed(() => SPEEDS[speedIdx.value])
+const isPlaying = ref(false)
+const isNodeMode = ref(false)  // true when visualizing linked list / tree nodes
+
+let player: TracePlayer | null = null
+
+// ── D3 Visualizer ────────────────────────────────────────────────
+const svgRef = ref<SVGSVGElement | null>(null)
+
+const ACTION_COLORS: Record<string, string> = {
+  cmp: '#F97316',  // orange — comparing
+  swp: '#10B981',  // emerald — swapping
+  vis: '#3B82F6',  // blue — visiting
+  fnd: '#FBBF24',  // gold — found
+  done: '#6EE7B7', // light emerald — sorted
+}
+
 // ── Run Code ─────────────────────────────────────────────────────
 const handleRunCode = async () => {
   loading.value = true
@@ -268,32 +398,86 @@ const handleRunCode = async () => {
         exerciseId: Number(route.params.id),
         code: code.value,
         language: 'javascript',
+        deltas: editorRef.value?.getDeltas() ?? []
       }),
     })
-    const result = await res.json()
+    const responseData = await res.json()
+    const result = responseData.execution
+    gamiData.value = responseData.gamification
+
     const log: TraceLog = JSON.parse(result.traceLog)
     lastTraceLog.value = log  // Store full log for AI context
 
-    player = TracePlayer.create(log, (state, step, idx, total) => {
+    // Sandbox error: backend returned a trace with error action or empty trace
+    if (!log.trace || log.trace.length === 0) {
+      aiMessages.value.push({ role: 'ai', text: `⚠️ Sandbox lỗi: ${result.message || 'Code không thể chạy được.'}` })
+      loading.value = false
+      return
+    }
+
+    player = TracePlayer.create(log, (state, step, idx, total, ds, nodes) => {
       visualizerData.value = state
       currentStep.value = step
       currentIndex.value = idx
       totalSteps.value = total
       highlightLine.value = step?.l ?? null
-      renderVisualizer(state, step)
+      dsState.value = ds || {}
+      
+      if (nodes && Object.keys(nodes.nodes).length > 0) {
+        visualizerData.value = [] // Clear bars if nodes exist
+        renderNodeLinkVisualizer(nodes)
+      } else {
+        renderVisualizer(state, step)
+      }
+      
       isPlaying.value = player?.isPlaying ?? false
     })
 
     player.setSpeed(currentSpeed.value)
-    visualizerData.value = log.initialState
+    
+    // Auto-detect view type: if trace has nodes, clear bars immediately
+    const hasNodes = log.trace.some(s => s.a === 'node')
+    isNodeMode.value = hasNodes
+    if (hasNodes) {
+      visualizerData.value = []
+      currentIndex.value = -1
+    } else {
+      visualizerData.value = log.initialState
+    }
+    
     totalSteps.value = log.trace.length
-    renderVisualizer(log.initialState, null)
+    
+    // Initial render for array mode only
+    if (!hasNodes) {
+       renderVisualizer(log.initialState, null)
+    }
 
-    // Auto-prompt AI after successful run
-    aiMessages.value.push({
-      role: 'ai',
-      text: `✅ Code đã chạy! Tôi đã phân tích ${log.trace.length} bước thực thi trên mảng [${log.initialState.join(', ')}]. Bạn muốn tôi giải thích bước nào?`
-    })
+    // Reset deltas after successful capture
+    editorRef.value?.resetDeltas()
+
+    // Handle Gamification Success
+    if (result.success && gamiData.value) {
+      showSuccessOverlay.value = true
+      
+      // Broadcast progress if in Arena
+      if (isArenaMatch.value && arenaConnection) {
+        await arenaConnection.invoke('SendProgress', route.query.matchId, 100)
+      }
+
+      if (gamiData.value.isLevelUp) {
+        setTimeout(() => { showLevelUpModal.value = true }, 2000)
+      }
+      
+      aiMessages.value.push({
+        role: 'ai',
+        text: `✨ Tuyệt vời! Bạn đã hoàn thành bài tập và nhận được ${gamiData.value.xpEarned + gamiData.value.bonusXp} XP. ${gamiData.value.isLevelUp ? '🎊 BẠN ĐÃ LÊN CẤP ' + gamiData.value.level + '!' : ''}`
+      })
+    } else {
+      aiMessages.value.push({
+        role: 'ai',
+        text: `✅ Code đã chạy! Tôi đã phân tích ${log.trace.length} bước thực thi. Bạn muốn tôi giải thích bước nào?`
+      })
+    }
   } catch (err) {
     console.error(err)
     aiMessages.value.push({ role: 'ai', text: '⚠️ Lỗi kết nối server. Kiểm tra backend đã chạy chưa?' })
@@ -406,6 +590,7 @@ const handleAiKeydown = (e: KeyboardEvent) => {
 }
 
 onMounted(async () => {
+  if (isArenaMatch.value) setupArenaHub()
   try {
     const res = await fetch(`${API_BASE}/exercises/${route.params.id}`)
     exercise.value = await res.json()
@@ -421,6 +606,14 @@ onMounted(async () => {
         code.value = '// Viết thuật toán Binary Search\nfunction binarySearch(arr, target) {\n  let left = 0;\n  let right = arr.length - 1;\n  // code...\n}'
       } else if (title.includes('valid palindrome')) {
         code.value = '// Kiểm tra chuỗi đối xứng\nfunction isPalindrome(s) {\n  // Dùng 2 con trỏ left, right\n}'
+      } else if (title.includes('reverse linked list') || title.includes('reverse list') || (title.includes('reverse') && title.includes('link'))) {
+        code.value = '// Đảo ngược Linked List\n// ListNode đã được định nghĩa sẵn trong môi trường chạy\nfunction reverseList() {\n  // Tạo linked list mẫu: 1 -> 2 -> 3 -> 4 -> 5\n  let head = new ListNode(1);\n  head.next = new ListNode(2);\n  head.next.next = new ListNode(3);\n  head.next.next.next = new ListNode(4);\n  head.next.next.next.next = new ListNode(5);\n\n  // Đảo ngược\n  let prev = null;\n  let curr = head;\n  while (curr !== null) {\n    let next = curr.next;\n    curr.next = prev;\n    prev = curr;\n    curr = next;\n  }\n  return prev;\n}'
+      } else if (title.includes('linked list') || title.includes('danh sách liên kết')) {
+        code.value = '// Bài tập Linked List\n// ListNode đã được định nghĩa sẵn trong môi trường chạy\nfunction reverseList() {\n  let head = new ListNode(1);\n  head.next = new ListNode(2);\n  head.next.next = new ListNode(3);\n  // Viết logic xử lý ở đây...\n}'
+      } else if (title.includes('inorder') || title.includes('preorder') || title.includes('postorder') || title.includes('tree')) {
+        code.value = '// Bài tập Binary Tree\n// TreeNode đã được định nghĩa sẵn trong môi trường chạy\nfunction solve() {\n  let root = new TreeNode(1);\n  root.left = new TreeNode(2);\n  root.right = new TreeNode(3);\n  // Viết logic traversal ở đây...\n}'
+      } else if (title.includes('quick sort') || title.includes('quicksort')) {
+        code.value = '// Viết thuật toán Quick Sort\nfunction quickSort(arr, low = 0, high = arr.length - 1) {\n  if (low < high) {\n    let pivot = arr[high];\n    // code...\n  }\n  return arr;\n}'
       } else {
         code.value = `// Hoàn thành bài tập: ${exercise.value.title}\nfunction solve() {\n  \n}`
       }
@@ -428,7 +621,49 @@ onMounted(async () => {
   } catch { /* offline */ }
 })
 
-onBeforeUnmount(() => { player?.pause() })
+import { gsap } from 'gsap'
+const levelUpRef = ref<HTMLElement | null>(null)
+
+const runLevelUpAnim = () => {
+  if (!levelUpRef.value) return
+  const tl = gsap.timeline()
+  tl.fromTo('.level-card', { scale: 0.5, opacity: 0, y: 50 }, { scale: 1, opacity: 1, y: 0, duration: 0.6, ease: 'back.out(1.7)' })
+  tl.fromTo('.level-glow', { opacity: 0, scale: 0.5 }, { opacity: 1, scale: 1.5, duration: 1, repeat: -1, yoyo: true }, '-=0.3')
+  tl.fromTo('.level-text', { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4, stagger: 0.1 }, '-=0.5')
+}
+
+
+const runSuccessAnim = () => {
+  const card = document.querySelector('.success-card')
+  if (!card) return
+  
+  const tl = gsap.timeline()
+  tl.fromTo(card, { y: 100, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: 'power3.out' })
+  
+  const badges = document.querySelectorAll('.badge-stamp')
+  if (badges.length > 0) {
+    tl.fromTo(badges, { scale: 3, opacity: 0, rotate: -20 }, { scale: 1, opacity: 1, rotate: 0, duration: 0.4, stagger: 0.2, ease: 'bounce.out' }, '-=0.2')
+  }
+}
+
+import { watch, nextTick } from 'vue'
+watch(showLevelUpModal, async (val) => {
+  if (val) {
+    await nextTick()
+    runLevelUpAnim()
+  }
+})
+watch(showSuccessOverlay, async (val) => {
+  if (val) {
+    await nextTick()
+    runSuccessAnim()
+  }
+})
+
+onBeforeUnmount(() => { 
+  player?.pause() 
+  arenaConnection?.stop()
+})
 </script>
 
 <template>
@@ -468,7 +703,7 @@ onBeforeUnmount(() => { player?.pause() })
           Code Mẫu
         </button>
 
-        <button @click="handleRunCode" :disabled="loading"
+        <button id="run-code-btn" @click="handleRunCode" :disabled="loading"
           class="flex items-center gap-2 px-4 py-1.5 rounded-lg font-bold text-sm transition-all disabled:opacity-50"
           style="background:#10B981; color:#fff;"
           @mouseenter="($event.currentTarget as HTMLElement).style.background='#059669'"
@@ -488,36 +723,75 @@ onBeforeUnmount(() => { player?.pause() })
       <!-- ── Left: Visualizer + Controls ── -->
       <div class="flex-1 flex flex-col min-w-0" style="border-right:1px solid rgba(255,255,255,0.05);">
 
-        <!-- Visualizer canvas -->
-        <div class="flex-1 relative flex items-center justify-center overflow-hidden" style="background:#020408;">
-          <svg ref="svgRef" width="100%" height="100%" style="overflow:visible;"></svg>
+        <div class="flex-1 relative flex flex-col min-h-0" style="background:#020408;">
+          <!-- Visualizer Area -->
+          <div class="flex-1 relative">
+            <svg ref="svgRef" width="100%" height="100%" style="overflow:hidden;"></svg>
 
-          <!-- Empty state -->
-          <div v-if="!visualizerData.length" class="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-600">
-            <div class="w-16 h-16 rounded-2xl flex items-center justify-center" style="background:rgba(16,185,129,0.05);border:1px solid rgba(16,185,129,0.1);">
-              <Play class="w-7 h-7 text-emerald-900" />
+            <!-- Empty state / Waiting for code -->
+            <div v-if="!isNodeMode && (!visualizerData.length || (currentIndex === -1 && totalSteps === 0))" 
+              class="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-600">
+              <div class="w-16 h-16 rounded-2xl flex items-center justify-center" style="background:rgba(16,185,129,0.05);border:1px solid rgba(16,185,129,0.1);">
+                <Code2 class="w-7 h-7 text-emerald-900" />
+              </div>
+              <p class="text-sm font-medium">Bấm RUN CODE để trực quan hóa thuật toán</p>
+              <p class="text-[10px] text-slate-700 max-w-[200px] text-center">Hệ thống sẽ tự động vẽ Mảng hoặc Cấu trúc dữ liệu dựa trên code của bạn.</p>
             </div>
-            <p class="text-sm font-medium">Viết code và bấm RUN để bắt đầu</p>
-          </div>
 
-          <!-- Action overlay -->
-          <div v-if="currentStep" class="absolute top-3 left-3 flex items-center gap-2">
-            <span class="text-[11px] font-bold px-2.5 py-1 rounded font-mono-stat uppercase tracking-widest"
-              :style="`background:${ACTION_COLORS[currentStep.a]}20; color:${ACTION_COLORS[currentStep.a]}; border:1px solid ${ACTION_COLORS[currentStep.a]}40`">
-              {{ currentStep.a === 'cmp' ? '⚖ COMPARE' : currentStep.a === 'swp' ? '↔ SWAP' : currentStep.a === 'fnd' ? '✓ FOUND' : currentStep.a.toUpperCase() }}
-            </span>
-            <span v-if="currentStep.l" class="text-[11px] text-slate-500 font-mono-stat">LINE {{ currentStep.l }}</span>
-          </div>
+            <!-- Action overlay / Error overlay -->
+            <div v-if="currentStep" class="absolute top-3 left-3 flex items-center gap-2">
+              <span v-if="currentStep.a === 'err'" 
+                class="text-[11px] font-bold px-2.5 py-1 rounded font-mono-stat uppercase tracking-widest bg-red-500/20 text-red-500 border border-red-500/40">
+                ❌ ERROR: {{ currentStep.v?.msg || 'Execution failed' }}
+              </span>
+              <template v-else>
+                <span class="text-[11px] font-bold px-2.5 py-1 rounded font-mono-stat uppercase tracking-widest"
+                  :style="`background:${ACTION_COLORS[currentStep.a]}20; color:${ACTION_COLORS[currentStep.a]}; border:1px solid ${ACTION_COLORS[currentStep.a]}40`">
+                  {{ currentStep.a === 'cmp' ? '⚖ COMPARE' : currentStep.a === 'swp' ? '↔ SWAP' : currentStep.a === 'fnd' ? '✓ FOUND' : currentStep.a.toUpperCase() }}
+                </span>
+                <span v-if="currentStep.l" class="text-[11px] text-slate-500 font-mono-stat">LINE {{ currentStep.l }}</span>
+              </template>
+            </div>
 
-          <!-- Variable tracker -->
-          <div v-if="currentStep?.v && Object.keys(currentStep.v).length"
-            class="absolute top-3 right-3 text-[11px] font-mono-stat rounded-lg p-2.5 space-y-1"
-            style="background:rgba(6,13,22,0.9); border:1px solid rgba(16,185,129,0.15);">
-            <div class="text-slate-500 uppercase tracking-widest text-[9px] font-bold mb-1.5">Variables</div>
-            <div v-for="(val, key) in currentStep.v" :key="key" class="flex items-center gap-2">
-              <span class="text-emerald-400">{{ key }}</span>
-              <span class="text-slate-500">=</span>
-              <span class="text-slate-200">{{ val }}</span>
+            <!-- Memory Map (Secondary Structures) -->
+            <div v-if="Object.keys(dsState).length > 0" class="absolute top-4 right-48 w-48 flex flex-col gap-3">
+              <div v-for="(ds, name) in dsState" :key="name" 
+                class="rounded-xl p-3 border border-emerald-500/30 bg-black/60 backdrop-blur-md shadow-2xl">
+                <div class="flex items-center gap-2 mb-2">
+                  <div class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                  <span class="text-[9px] font-black text-emerald-400 uppercase tracking-widest">{{ name }} ({{ ds.type }})</span>
+                </div>
+                <div class="flex flex-wrap gap-1.5">
+                  <div v-for="item in ds.items" :key="item"
+                    class="w-6 h-6 rounded bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-[10px] font-bold text-white transition-all transform scale-110">
+                    {{ item }}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Variable Watch Panel -->
+            <div v-if="currentStep?.v" class="absolute top-4 right-4 w-40 rounded-xl overflow-hidden shadow-2xl border transition-all duration-300"
+              style="background:rgba(6,13,22,0.85); border-color:rgba(16,185,129,0.2); backdrop-filter:blur(12px);">
+              <div class="px-3 py-2 flex items-center justify-between" style="border-bottom:1px solid rgba(16,185,129,0.1); background:rgba(16,185,129,0.05);">
+                <div class="flex items-center gap-2">
+                  <Eye class="w-3.5 h-3.5 text-emerald-400" />
+                  <span class="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Variable Watch</span>
+                </div>
+              </div>
+              <div class="p-3 space-y-2.5">
+                <div v-if="!Object.keys(currentStep.v).filter(k => k !== 'val' && k !== 'ds').length" class="text-[9px] text-slate-600 italic text-center py-2">
+                  Scanning locals...
+                </div>
+                <template v-for="(val, key) in currentStep.v" :key="key">
+                  <div v-if="key !== 'val' && key !== 'ds'" class="flex items-center justify-between text-[11px] font-mono-stat">
+                    <span class="text-slate-500">{{ key }}</span>
+                    <span class="text-emerald-400 font-bold bg-emerald-400/10 px-2 py-0.5 rounded-md min-w-[1.5rem] text-center border border-emerald-400/20 shadow-[0_0_10px_rgba(16,185,129,0.1)]">
+                      {{ val }}
+                    </span>
+                  </div>
+                </template>
+              </div>
             </div>
           </div>
         </div>
@@ -526,6 +800,39 @@ onBeforeUnmount(() => { player?.pause() })
         <div class="h-1 cursor-pointer" style="background:rgba(255,255,255,0.04);" @click="seekProgress">
           <div class="h-full transition-all duration-200" style="background:linear-gradient(90deg,#10B981,#34D399);"
             :style="`width:${progressPct}%`"></div>
+        </div>
+
+        <!-- Arena Progress Overlay -->
+        <div v-if="isArenaMatch" class="px-6 py-3 flex items-center gap-6" 
+          :style="isSpectator ? 'background:#060D16; border-bottom:1px solid rgba(99,102,241,0.3);' : 'background:#0A1628; border-bottom:1px solid rgba(239,68,68,0.2);'">
+          
+          <div v-if="isSpectator" class="flex items-center gap-2 px-3 py-1 rounded bg-indigo-500/10 border border-indigo-500/20 mr-2">
+            <div class="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></div>
+            <span class="text-[9px] font-black text-indigo-400 tracking-tighter">OBSERVER MODE</span>
+          </div>
+
+          <div class="flex-1">
+            <div class="flex justify-between text-[10px] font-black mb-1.5 uppercase tracking-widest">
+              <span class="text-blue-400">{{ isSpectator ? 'PLAYER 1' : 'BẠN' }}</span>
+              <span class="text-slate-400">{{ isSpectator ? myProgress : 100 }}%</span>
+            </div>
+            <div class="h-1.5 rounded-full overflow-hidden bg-white/5">
+              <div class="h-full transition-all duration-500" :style="`width: ${isSpectator ? myProgress : progressPct}%; background: #3B82F6;`"></div>
+            </div>
+          </div>
+          <div class="text-xs font-black italic text-red-500">VS</div>
+          <div class="flex-1">
+            <div class="flex justify-between text-[10px] font-black mb-1.5 uppercase tracking-widest">
+              <span class="text-red-400">{{ isSpectator ? 'PLAYER 2' : 'ĐỐI THỦ' }}</span>
+              <span class="text-slate-400">{{ opponentProgress }}%</span>
+            </div>
+            <div class="h-1.5 rounded-full overflow-hidden bg-white/5">
+              <div class="h-full transition-all duration-500" :style="`width: ${opponentProgress}%; background: #EF4444;`"></div>
+            </div>
+          </div>
+          <div class="px-3 py-1 rounded bg-red-500/10 border border-red-500/20 text-[10px] font-bold text-red-400">
+            {{ matchStatus }}
+          </div>
         </div>
 
         <!-- Playback controls -->
@@ -576,6 +883,7 @@ onBeforeUnmount(() => { player?.pause() })
         <!-- Monaco Editor -->
         <div class="flex-1 overflow-hidden min-h-0">
           <MonacoEditor
+            ref="editorRef"
             v-model="code"
             :language="'javascript'"
             :highlight-line="highlightLine"
@@ -717,9 +1025,119 @@ onBeforeUnmount(() => { player?.pause() })
       </div>
     </Transition>
   </Teleport>
+  <!-- ── Level Up Modal ── -->
+  <Teleport to="body">
+    <Transition name="fade">
+      <div v-if="showLevelUpModal" ref="levelUpRef" class="fixed inset-0 z-[100] flex items-center justify-center p-4"
+        style="background:rgba(0,0,0,0.85); backdrop-filter:blur(10px);">
+        
+        <!-- Animated Background Rays -->
+        <div class="level-glow absolute w-96 h-96 rounded-full blur-[100px] opacity-20"
+          style="background:radial-gradient(circle, #10B981, #3B82F6);"></div>
+
+        <div class="level-card relative w-full max-w-sm p-10 rounded-[40px] text-center border overflow-hidden"
+          style="background:linear-gradient(180deg, #060D16, #020408); border-color:rgba(16,185,129,0.3); box-shadow:0 0 80px rgba(16,185,129,0.2);">
+          
+          <div class="absolute top-0 left-0 w-full h-1" style="background:linear-gradient(90deg, transparent, #10B981, transparent);"></div>
+
+          <div class="mb-8 relative inline-block">
+            <div class="w-24 h-24 rounded-3xl rotate-12 flex items-center justify-center border-2 border-emerald-500/30"
+              style="background:rgba(16,185,129,0.1); backdrop-filter:blur(5px);">
+              <Sparkles class="w-12 h-12 text-emerald-400 -rotate-12" />
+            </div>
+            <div class="absolute -top-2 -right-2 w-8 h-8 rounded-full bg-emerald-500 text-black font-black flex items-center justify-center text-xs animate-bounce">
+              !
+            </div>
+          </div>
+
+          <h2 class="level-text text-[10px] font-black tracking-[0.4em] uppercase text-emerald-500 mb-2">CONGRATULATIONS</h2>
+          <h1 class="level-text text-5xl font-black text-white mb-6 italic tracking-tighter">LEVEL UP!</h1>
+          
+          <div class="level-text flex items-center justify-center gap-4 mb-8">
+            <div class="text-4xl font-black text-slate-600 line-through">LV.{{ gamiData?.level - 1 }}</div>
+            <div class="w-8 h-px bg-slate-800"></div>
+            <div class="text-6xl font-black text-emerald-400 drop-shadow-[0_0_15px_rgba(16,185,129,0.5)]">LV.{{ gamiData?.level }}</div>
+          </div>
+
+          <p class="level-text text-xs text-slate-400 mb-10 leading-relaxed px-4">
+            Bạn đã mở khóa thêm các bài tập mới trong Skill Tree. Tiếp tục phát huy nhé!
+          </p>
+
+          <button @click="showLevelUpModal = false"
+            class="level-text w-full py-4 rounded-2xl font-black text-sm tracking-widest transition-all active:scale-95"
+            style="background:#10B981; color:#000; box-shadow:0 10px 30px rgba(16,185,129,0.3);">
+            TIẾP TỤC HÀNH TRÌNH
+          </button>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
+  <!-- ── Success Performance Overlay ── -->
+  <Teleport to="body">
+    <Transition name="fade">
+      <div v-if="showSuccessOverlay" ref="successOverlayRef" class="fixed inset-0 z-[90] flex items-center justify-center p-4 pointer-events-none">
+        <div class="success-card w-full max-w-lg p-8 rounded-3xl pointer-events-auto shadow-[0_30px_100px_rgba(0,0,0,0.8)]"
+          style="background:#060D16; border:1px solid rgba(16,185,129,0.2);">
+          
+          <div class="flex items-start justify-between mb-8">
+            <div>
+              <div class="text-emerald-500 font-black tracking-widest text-[10px] mb-1">MISSION COMPLETED</div>
+              <h2 class="text-3xl font-black text-white italic">ACCEPTED!</h2>
+            </div>
+            <button @click="showSuccessOverlay = false" class="p-2 rounded-xl hover:bg-white/5 transition-all text-slate-500">
+              <X class="w-5 h-5" />
+            </button>
+          </div>
+
+          <div class="grid grid-cols-2 gap-6 mb-8">
+            <div class="p-4 rounded-2xl" style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.05);">
+              <div class="text-[10px] text-slate-500 font-bold uppercase mb-1">XP Earned</div>
+              <div class="text-2xl font-black text-white">+{{ gamiData?.xpEarned + gamiData?.bonusXp }} <span class="text-emerald-400 text-sm">XP</span></div>
+            </div>
+            <div class="p-4 rounded-2xl" style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.05);">
+              <div class="text-[10px] text-slate-500 font-bold uppercase mb-1">Current Level</div>
+              <div class="text-2xl font-black text-white">LV.{{ gamiData?.level }}</div>
+            </div>
+          </div>
+
+          <!-- Badges Section -->
+          <div v-if="gamiData?.IsSpeedDemon || gamiData?.IsMemoryMaster">
+            <div class="text-[10px] text-slate-600 font-bold uppercase tracking-widest mb-4 text-center">Performance Badges</div>
+            <div class="flex justify-center gap-8">
+              <!-- Speed Demon -->
+              <div v-if="gamiData?.IsSpeedDemon" class="badge-stamp flex flex-col items-center gap-2">
+                <div class="w-16 h-16 rounded-full flex items-center justify-center border-4 border-yellow-500/30 shadow-[0_0_20px_rgba(245,158,11,0.2)]"
+                  style="background:rgba(245,158,11,0.1);">
+                  <Zap class="w-8 h-8 text-yellow-500 fill-current" />
+                </div>
+                <span class="text-[9px] font-black text-yellow-500 uppercase">Speed Demon</span>
+              </div>
+              <!-- Memory Master -->
+              <div v-if="gamiData?.IsMemoryMaster" class="badge-stamp flex flex-col items-center gap-2">
+                <div class="w-16 h-16 rounded-full flex items-center justify-center border-4 border-blue-500/30 shadow-[0_0_20px_rgba(59,130,246,0.2)]"
+                  style="background:rgba(59,130,246,0.1);">
+                  <Cpu class="w-8 h-8 text-blue-500" />
+                </div>
+                <span class="text-[9px] font-black text-blue-500 uppercase">Memory Master</span>
+              </div>
+            </div>
+          </div>
+
+          <button @click="showSuccessOverlay = false"
+            class="w-full mt-10 py-4 rounded-2xl font-black text-sm tracking-widest transition-all active:scale-95"
+            style="background:#10B981; color:#000;">
+            TIẾP TỤC
+          </button>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
 </template>
 
 <style scoped>
 .modal-enter-active, .modal-leave-active { transition: all 0.2s ease; }
 .modal-enter-from, .modal-leave-to { opacity: 0; transform: scale(0.96); }
+
+.fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>

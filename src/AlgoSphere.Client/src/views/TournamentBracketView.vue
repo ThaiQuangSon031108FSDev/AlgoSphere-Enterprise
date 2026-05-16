@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { API_BASE } from '../utils/api'
+import { API_BASE, HUB_BASE } from '../utils/api'
 import { ChevronLeft, Trophy, Swords, Clock } from 'lucide-vue-next'
+import * as signalR from '@microsoft/signalr'
 
 const route   = useRoute()
 const matches = ref<any[]>([])
 const tournament = ref<any>(null)
 const loading = ref(true)
 
-onMounted(async () => {
+const fetchData = async () => {
   const id = route.params.id
   try {
     const [tRes, mRes] = await Promise.all([
@@ -26,6 +27,35 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
+}
+
+let connection: signalR.HubConnection | null = null
+
+onMounted(async () => {
+  await fetchData()
+
+  // Setup SignalR for live updates
+  const token = localStorage.getItem('token')
+  connection = new signalR.HubConnectionBuilder()
+    .withUrl(`${HUB_BASE}/ws/arena`, { accessTokenFactory: () => token! })
+    .withAutomaticReconnect()
+    .build()
+
+  connection.on('BracketUpdated', () => {
+    fetchData()
+  })
+
+  try {
+    await connection.start()
+    await connection.invoke('JoinTournamentGroup', Number(route.params.id))
+  } catch (err) {
+    console.error('SignalR failed', err)
+  }
+})
+
+import { onBeforeUnmount } from 'vue'
+onBeforeUnmount(() => {
+  connection?.stop()
 })
 
 // Group matches by BracketPosition prefix: "R1-M1" → round 1
