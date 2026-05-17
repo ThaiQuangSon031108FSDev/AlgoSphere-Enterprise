@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  algosphere-api:
+    image: algosphere/api:latest
+    restart: always
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ConnectionStrings__DefaultConnection=Server=sqlserver;Database=AlgoSphereDb;User=sa;Password=${DB_PASSWORD};TrustServerCertificate=True;
+      - Redis__ConnectionString=redis:6379,password=${REDIS_PASSWORD}
+    ports:
+      - "5141:8080"
+    depends_on:
+      - sqlserver
+      - redis
+
+  algosphere-client:
+    image: algosphere/client:latest
+    restart: always
+    ports:
+      - "5173:80"
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+
+  redis:
+    image: redis:7.0-alpine
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+
+  sandbox-runner:
+    image: algosphere/sandbox:latest
+    deploy:
+      replicas: 3 # Scale sandbox workers for load balancing
+    environment:
+      - MAX_EXECUTION_TIME=2000
+      - MAX_MEMORY=256m
+
+volumes:
+  sqlserver_data:
+  redis_data:

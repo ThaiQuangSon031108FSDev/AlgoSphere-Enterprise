@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { Zap, Code2, Trophy, Brain, Swords, ArrowRight, ChevronRight } from 'lucide-vue-next'
 
 const router = useRouter()
+const isLoggedIn = ref(false)
 
 // Animated counter
 const stats = ref([

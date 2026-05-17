@@ -1,7 +1,7 @@
 export interface TraceStep {
   s: number;           // step index
   l?: number;          // source code line number
-  a: 'cmp' | 'swp' | 'vis' | 'fnd' | 'done' | 'node' | 'link' | 'err'; // action type
+  a: 'cmp' | 'swp' | 'vis' | 'fnd' | 'done' | 'node' | 'link' | 'err' | 'push' | 'pop' | 'enq' | 'deq' | 'hset' | 'hget' | 'hdel' | 'ptr' | 'dpset' | 'gedge' | 'gvis' | 'call' | 'ret'; // action type
   t: number[];         // target indices
   v?: Record<string, any>; // variable snapshot
   msg?: string;        // human-readable message
@@ -57,6 +57,7 @@ export class TracePlayer {
     let arrayState = [...initial];
     let dsState: Record<string, any> = {};
     let nodeState: { nodes: Record<number, any>, links: any[] } = { nodes: {}, links: [] };
+    let recursionId = 0;
 
     for (const step of trace) {
       // Handle array swaps
@@ -76,6 +77,104 @@ export class TracePlayer {
             dsState[name] = { ...dsState[name], items: [...dsState[name].items, val] };
           }
         }
+      }
+
+      // Handle custom stack/queue/map actions
+      if (step.a === 'push') {
+        const name = step.v?.name || 'stack';
+        const val = step.v?.val;
+        if (!dsState[name]) dsState[name] = { type: 'Stack', items: [] };
+        dsState[name] = { ...dsState[name], items: [...dsState[name].items, val] };
+      }
+      if (step.a === 'pop') {
+        const name = step.v?.name || 'stack';
+        if (!dsState[name]) dsState[name] = { type: 'Stack', items: [] };
+        const newItems = [...dsState[name].items];
+        newItems.pop();
+        dsState[name] = { ...dsState[name], items: newItems };
+      }
+      if (step.a === 'enq') {
+        const name = step.v?.name || 'queue';
+        const val = step.v?.val;
+        if (!dsState[name]) dsState[name] = { type: 'Queue', items: [] };
+        dsState[name] = { ...dsState[name], items: [...dsState[name].items, val] };
+      }
+      if (step.a === 'deq') {
+        const name = step.v?.name || 'queue';
+        if (!dsState[name]) dsState[name] = { type: 'Queue', items: [] };
+        const newItems = [...dsState[name].items];
+        newItems.shift();
+        dsState[name] = { ...dsState[name], items: newItems };
+      }
+      if (step.a === 'hset') {
+        const name = step.v?.name || 'Map';
+        const { key, val } = step.v || {};
+        if (!dsState[name]) dsState[name] = { type: 'Map', items: {} };
+        dsState[name] = { ...dsState[name], items: { ...dsState[name].items, [key]: val } };
+      }
+      if (step.a === 'hdel') {
+        const name = step.v?.name || 'Map';
+        const { key } = step.v || {};
+        if (!dsState[name]) dsState[name] = { type: 'Map', items: {} };
+        const newItems = { ...dsState[name].items };
+        delete newItems[key];
+        dsState[name] = { ...dsState[name], items: newItems };
+      }
+      if (step.a === 'ptr') {
+        const { name, val } = step.v || {};
+        if (!dsState['pointers']) dsState['pointers'] = {};
+        dsState['pointers'] = { ...dsState['pointers'], [name]: { pos: step.t[0], val } };
+      }
+      if (step.a === 'dpset') {
+        const [r, c] = step.t;
+        const { val, formula } = step.v || {};
+        if (!dsState['dpTable']) dsState['dpTable'] = { grid: {}, maxRow: 0, maxCol: 0 };
+        const grid = { ...dsState['dpTable'].grid };
+        const key = `${r},${c}`;
+        grid[key] = { val, formula };
+        const maxRow = Math.max(dsState['dpTable'].maxRow, r);
+        const maxCol = Math.max(dsState['dpTable'].maxCol, c || 0);
+        dsState['dpTable'] = { grid, maxRow, maxCol };
+      }
+      if (step.a === 'gedge') {
+        const [u, v] = step.t;
+        const { weight, directed } = step.v || {};
+        if (!dsState['graph']) dsState['graph'] = { edges: [], nodeStates: {} };
+        const filteredEdges = dsState['graph'].edges.filter((e: any) => !(e.u === u && e.v === v));
+        dsState['graph'] = {
+          ...dsState['graph'],
+          edges: [...filteredEdges, { u, v, weight, directed }]
+        };
+      }
+      if (step.a === 'gvis') {
+        const [nodeId] = step.t;
+        const { state } = step.v || {};
+        if (!dsState['graph']) dsState['graph'] = { edges: [], nodeStates: {} };
+        dsState['graph'] = {
+          ...dsState['graph'],
+          nodeStates: { ...dsState['graph'].nodeStates, [nodeId]: state }
+        };
+      }
+      if (step.a === 'call') {
+        const [depth] = step.t;
+        const { fn, args } = step.v || {};
+        if (!dsState['recursion']) dsState['recursion'] = { calls: [] };
+        dsState['recursion'] = {
+          calls: [...dsState['recursion'].calls, { depth, fn, args, returned: false, retVal: null, id: ++recursionId }]
+        };
+      }
+      if (step.a === 'ret') {
+        const [depth] = step.t;
+        const { val } = step.v || {};
+        if (!dsState['recursion']) dsState['recursion'] = { calls: [] };
+        const calls = [...dsState['recursion'].calls];
+        for (let i = calls.length - 1; i >= 0; i--) {
+          if (calls[i].depth === depth && !calls[i].returned) {
+            calls[i] = { ...calls[i], returned: true, retVal: val };
+            break;
+          }
+        }
+        dsState['recursion'] = { calls };
       }
 
       // Handle Node creation
@@ -98,7 +197,7 @@ export class TracePlayer {
       }
 
       arraySnapshots.push([...arrayState]);
-      dsSnapshots.push({ ...dsState });
+      dsSnapshots.push(JSON.parse(JSON.stringify(dsState)));
       // Deep copy nodeState so each snapshot is independent
       nodeSnapshots.push({
         nodes: { ...nodeState.nodes },

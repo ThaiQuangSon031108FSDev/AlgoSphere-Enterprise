@@ -2,12 +2,18 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { API_BASE } from '../utils/api'
-import { Play, Pause, RotateCcw, ChevronLeft, ChevronRight, Save, Sparkles, Send, X, BookOpen, Eye, Zap, Cpu, Code2 } from 'lucide-vue-next'
+import { Play, Pause, RotateCcw, ChevronLeft, ChevronRight, Save, Sparkles, Send, X, BookOpen, Eye, Zap, Cpu, Code2, ShieldAlert } from 'lucide-vue-next'
 import * as d3 from 'd3'
 import * as signalR from '@microsoft/signalr'
 import { HUB_BASE } from '../utils/api'
 import { TracePlayer, type TraceLog, type TraceStep } from '../utils/TracePlayer'
 import MonacoEditor from '../components/MonacoEditor.vue'
+import StackQueueRenderer from '../components/visualizers/StackQueueRenderer.vue'
+import HashMapRenderer from '../components/visualizers/HashMapRenderer.vue'
+import TwoPointerRenderer from '../components/visualizers/TwoPointerRenderer.vue'
+import DPTableRenderer from '../components/visualizers/DPTableRenderer.vue'
+import GraphRenderer from '../components/visualizers/GraphRenderer.vue'
+import RecursionTreeRenderer from '../components/visualizers/RecursionTreeRenderer.vue'
 
 // ── Solution Modal ────────────────────────────────────────────────
 const showSolutionModal = ref(false)
@@ -420,6 +426,35 @@ const currentSpeed = computed(() => SPEEDS[speedIdx.value])
 const isPlaying = ref(false)
 const isNodeMode = ref(false)  // true when visualizing linked list / tree nodes
 
+const visualMode = ref<'array' | 'nodelink' | 'stackqueue' | 'hashmap' | 'twopointer' | 'dptable' | 'graph' | 'recursion'>('array')
+
+const autoDetectMode = (log: TraceLog): 'array' | 'nodelink' | 'stackqueue' | 'hashmap' | 'twopointer' | 'dptable' | 'graph' | 'recursion' => {
+  if (!log.trace || log.trace.length === 0) return 'array'
+  
+  if (log.trace.some(s => ['push', 'pop', 'enq', 'deq'].includes(s.a))) {
+    return 'stackqueue'
+  }
+  if (log.trace.some(s => ['hset', 'hget', 'hdel'].includes(s.a))) {
+    return 'hashmap'
+  }
+  if (log.trace.some(s => s.a === 'ptr')) {
+    return 'twopointer'
+  }
+  if (log.trace.some(s => s.a === 'dpset')) {
+    return 'dptable'
+  }
+  if (log.trace.some(s => ['gedge', 'gvis'].includes(s.a))) {
+    return 'graph'
+  }
+  if (log.trace.some(s => ['call', 'ret'].includes(s.a))) {
+    return 'recursion'
+  }
+  if (log.trace.some(s => s.a === 'node')) {
+    return 'nodelink'
+  }
+  return 'array'
+}
+
 let player: TracePlayer | null = null
 
 // ── D3 Visualizer ────────────────────────────────────────────────
@@ -431,6 +466,19 @@ const ACTION_COLORS: Record<string, string> = {
   vis: '#3B82F6',  // blue — visiting
   fnd: '#FBBF24',  // gold — found
   done: '#6EE7B7', // light emerald — sorted
+  push: '#EC4899', // pink — push
+  pop: '#F43F5E',  // rose — pop
+  enq: '#14B8A6',  // teal — enqueue
+  deq: '#0D9488',  // dark teal — dequeue
+  hset: '#10B981', // emerald — hashset set
+  hget: '#F59E0B', // amber — hashset get
+  hdel: '#EF4444', // red — hashset delete
+  ptr: '#0EA5E9',  // sky blue — pointer
+  dpset: '#F97316',// orange — dp set
+  gedge: '#64748B',// slate — graph edge
+  gvis: '#F59E0B', // amber — graph visit
+  call: '#F97316', // orange — recursive call
+  ret: '#10B981',  // emerald — recursive return
 }
 
 // ── Run Code ─────────────────────────────────────────────────────
@@ -469,6 +517,8 @@ const handleRunCode = async () => {
       return
     }
 
+    visualMode.value = autoDetectMode(log)
+
     player = TracePlayer.create(log, (state, step, idx, total, ds, nodes) => {
       visualizerData.value = state
       currentStep.value = step
@@ -477,10 +527,10 @@ const handleRunCode = async () => {
       highlightLine.value = step?.l ?? null
       dsState.value = ds || {}
       
-      if (nodes && Object.keys(nodes.nodes).length > 0) {
+      if (visualMode.value === 'nodelink' && nodes && Object.keys(nodes.nodes).length > 0) {
         visualizerData.value = [] // Clear bars if nodes exist
         renderNodeLinkVisualizer(nodes)
-      } else {
+      } else if (visualMode.value === 'array') {
         renderVisualizer(state, step)
       }
       
@@ -489,10 +539,8 @@ const handleRunCode = async () => {
 
     player.setSpeed(currentSpeed.value)
     
-    // Auto-detect view type: if trace has nodes, clear bars immediately
-    const hasNodes = log.trace.some(s => s.a === 'node')
-    isNodeMode.value = hasNodes
-    if (hasNodes) {
+    isNodeMode.value = (visualMode.value === 'nodelink')
+    if (visualMode.value === 'nodelink') {
       visualizerData.value = []
       currentIndex.value = -1
     } else {
@@ -502,7 +550,7 @@ const handleRunCode = async () => {
     totalSteps.value = log.trace.length
     
     // Initial render for array mode only
-    if (!hasNodes) {
+    if (visualMode.value === 'array') {
        renderVisualizer(log.initialState, null)
     }
 
@@ -783,10 +831,18 @@ onBeforeUnmount(() => {
         <div class="flex-1 relative flex flex-col min-h-0" style="background:#020408;">
           <!-- Visualizer Area -->
           <div class="flex-1 relative">
-            <svg ref="svgRef" width="100%" height="100%" style="overflow:hidden;"></svg>
+            <svg v-show="visualMode === 'array' || visualMode === 'nodelink'" ref="svgRef" width="100%" height="100%" style="overflow:hidden;"></svg>
+
+            <!-- Custom Premium Visualizers -->
+            <StackQueueRenderer v-slot="{}" v-if="visualMode === 'stackqueue'" :dsState="dsState" />
+            <HashMapRenderer v-if="visualMode === 'hashmap'" :dsState="dsState" />
+            <TwoPointerRenderer v-slot="{}" v-if="visualMode === 'twopointer'" :array="visualizerData" :dsState="dsState" />
+            <DPTableRenderer v-if="visualMode === 'dptable'" :dsState="dsState" />
+            <GraphRenderer v-if="visualMode === 'graph'" :dsState="dsState" />
+            <RecursionTreeRenderer v-if="visualMode === 'recursion'" :dsState="dsState" />
 
             <!-- Empty state / Waiting for code -->
-            <div v-if="!isNodeMode && (!visualizerData.length || (currentIndex === -1 && totalSteps === 0))" 
+            <div v-if="visualMode === 'array' && (!visualizerData.length || (currentIndex === -1 && totalSteps === 0))" 
               class="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-600">
               <div class="w-16 h-16 rounded-2xl flex items-center justify-center" style="background:rgba(16,185,129,0.05);border:1px solid rgba(16,185,129,0.1);">
                 <Code2 class="w-7 h-7 text-emerald-900" />
@@ -930,6 +986,20 @@ onBeforeUnmount(() => {
             title="Thay đổi tốc độ">
             {{ currentSpeed }}x
           </button>
+
+          <!-- Visual Mode Selector -->
+          <div class="relative ml-2">
+            <select v-model="visualMode" class="bg-slate-900 border border-slate-800 rounded-lg text-slate-300 px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-emerald-500/50 cursor-pointer">
+              <option value="array">📊 Array</option>
+              <option value="nodelink">🌳 Node-Link</option>
+              <option value="stackqueue">🥞 Stack/Queue</option>
+              <option value="hashmap">🗂 HashMap</option>
+              <option value="twopointer">👉 Two-Pointer</option>
+              <option value="dptable">🕸 DP Table</option>
+              <option value="graph">🕸 Graph</option>
+              <option value="recursion">🌲 Recursion</option>
+            </select>
+          </div>
         </div>
       </div>
 
